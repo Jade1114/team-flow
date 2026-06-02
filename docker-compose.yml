@@ -14,7 +14,7 @@ services:
       timeout: 5s
       retries: 10
     ports:
-      - "3306:3306"
+      - "3307:3306"
 
   backend:
     build: ./server
