@@ -1,31 +1,14 @@
 services:
-  mysql:
-    image: mysql:8.0
-    environment:
-      MYSQL_ROOT_PASSWORD: teamflow
-      MYSQL_DATABASE: team_flow
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./server/src/main/resources/schema-mysql.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./server/src/main/resources/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-uroot", "-pteamflow"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    ports:
-      - "3307:3306"
-
   backend:
     build: ./server
     environment:
-      DB_HOST: mysql
-      DB_PASSWORD: teamflow
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-team_flow}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
     ports:
       - "8080:8080"
-    depends_on:
-      mysql:
-        condition: service_healthy
 
   frontend:
     build: ./web
@@ -33,6 +16,3 @@ services:
       - "80:80"
     depends_on:
       - backend
-
-volumes:
-  mysql_data:
