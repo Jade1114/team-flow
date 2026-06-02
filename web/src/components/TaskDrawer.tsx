@@ -1,8 +1,33 @@
 import { useState, useEffect, type FormEvent } from 'react'
 import { api } from '../api/client'
-import type { Task, Comment, Member } from '../api/client'
+import type { Task, Comment, Member, Activity } from '../api/client'
 
 const priorityLabel: Record<string, string> = { LOW: '低', MEDIUM: '中', HIGH: '高', URGENT: '紧急' }
+const statusMap: Record<string, string> = { TODO: '待处理', IN_PROGRESS: '进行中', DONE: '已完成' }
+
+function activityText(a: Activity): string {
+  switch (a.type) {
+    case 'TASK_CREATED': return `创建了此任务`
+    case 'TASK_UPDATED': return `更新了 ${a.newValue}`
+    case 'TASK_STATUS_CHANGED': return `状态从 ${statusMap[a.oldValue || ''] || a.oldValue} 移动到 ${statusMap[a.newValue || ''] || a.newValue}`
+    case 'TASK_ASSIGNED': return `负责人从 ${a.oldValue} 改为 ${a.newValue}`
+    case 'TASK_DELETED': return `删除了此任务`
+    case 'COMMENT_ADDED': return `评论：${a.newValue}`
+    case 'COMMENT_DELETED': return `删除了评论：${a.oldValue}`
+    default: return a.type
+  }
+}
+
+function formatTime(ts: string): string {
+  const date = new Date(ts)
+  const now = new Date()
+  const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
+  if (diff < 60) return '刚刚'
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
+  if (diff < 604800) return `${Math.floor(diff / 86400)} 天前`
+  return date.toLocaleDateString('zh-CN')
+}
 
 export default function TaskDrawer({
   taskId,
@@ -17,6 +42,7 @@ export default function TaskDrawer({
 }) {
   const [task, setTask] = useState<Task | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
+  const [activities, setActivities] = useState<Activity[]>([])
   const [commentText, setCommentText] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [editForm, setEditForm] = useState({
@@ -32,12 +58,14 @@ export default function TaskDrawer({
   }, [taskId])
 
   async function loadTask() {
-    const [detail, commentPage] = await Promise.all([
+    const [detail, commentPage, activityPage] = await Promise.all([
       api<Task>(`/tasks/${taskId}`),
       api<{ items: Comment[] }>(`/tasks/${taskId}/comments`),
+      api<{ items: Activity[] }>(`/tasks/${taskId}/activities`),
     ])
     setTask(detail)
     setComments(commentPage.items)
+    setActivities(activityPage.items)
     setEditForm({
       title: detail.title,
       description: detail.description ?? '',
@@ -138,6 +166,18 @@ export default function TaskDrawer({
           {task.canDelete && <button className="danger" onClick={handleDeleteTask}>删除任务</button>}
         </>
       )}
+
+      <section className="activities">
+        <h3>任务动态</h3>
+        {activities.length === 0 && <p className="muted" style={{ fontSize: 14 }}>暂无动态</p>}
+        {activities.map((a) => (
+          <div key={a.id} className="activity-row">
+            <strong>{a.user.name}</strong>
+            <span>{activityText(a)}</span>
+            <small>{formatTime(a.createdAt)}</small>
+          </div>
+        ))}
+      </section>
 
       <section className="comments">
         <h3>评论</h3>

@@ -1,8 +1,35 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api/client'
-import type { User, Project, Member, Task, Stats, TaskStatus } from '../api/client'
+import type { User, Project, Member, Task, Stats, TaskStatus, Activity } from '../api/client'
 import TaskDrawer from '../components/TaskDrawer'
+
+const statusMap: Record<string, string> = { TODO: '待处理', IN_PROGRESS: '进行中', DONE: '已完成' }
+
+function activityText(a: Activity): string {
+  switch (a.type) {
+    case 'TASK_CREATED': return `创建了任务「${a.content}」`
+    case 'TASK_UPDATED': return `更新了任务「${a.content}」的 ${a.newValue}`
+    case 'TASK_STATUS_CHANGED':
+      return `将任务「${a.content}」从 ${statusMap[a.oldValue || ''] || a.oldValue} 移动到 ${statusMap[a.newValue || ''] || a.newValue}`
+    case 'TASK_ASSIGNED': return `将任务「${a.content}」的负责人从 ${a.oldValue} 改为 ${a.newValue}`
+    case 'TASK_DELETED': return `删除了任务「${a.content}」`
+    case 'COMMENT_ADDED': return `在任务「${a.content}」中评论：${a.newValue}`
+    case 'COMMENT_DELETED': return `删除了任务「${a.content}」中的评论：${a.oldValue}`
+    default: return a.type
+  }
+}
+
+function formatTime(ts: string): string {
+  const date = new Date(ts)
+  const now = new Date()
+  const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
+  if (diff < 60) return '刚刚'
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
+  if (diff < 604800) return `${Math.floor(diff / 86400)} 天前`
+  return date.toLocaleDateString('zh-CN')
+}
 
 const statusColumns: { status: TaskStatus; title: string }[] = [
   { status: 'TODO', title: '待处理' },
@@ -24,6 +51,7 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
   const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'MEDIUM', assigneeId: '', dueDate: '' })
   const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null)
   const [message, setMessage] = useState('')
+  const [activities, setActivities] = useState<Activity[]>([])
 
   const activeProject = useMemo(
     () => projects.find((item) => item.id === activeProjectId) ?? project,
@@ -40,6 +68,7 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
       loadMembers(activeProjectId)
       loadBoard(activeProjectId)
       loadStats(activeProjectId)
+      loadActivities(activeProjectId)
     }
   }, [activeProjectId])
 
@@ -69,9 +98,14 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
     setStats(await api<Stats>(`/projects/${projectId}/stats`))
   }
 
+  async function loadActivities(projectId: number) {
+    const data = await api<{ items: Activity[] }>(`/projects/${projectId}/activities`)
+    setActivities(data.items)
+  }
+
   async function refreshProject(projectId = activeProjectId) {
     if (!projectId) return
-    await Promise.all([loadProjects(), loadProject(projectId), loadMembers(projectId), loadBoard(projectId), loadStats(projectId)])
+    await Promise.all([loadProjects(), loadProject(projectId), loadMembers(projectId), loadBoard(projectId), loadStats(projectId), loadActivities(projectId)])
   }
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
@@ -279,6 +313,19 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
                   </div>
                 </section>
               )}
+              <section>
+                <h2>项目动态</h2>
+                <div className="activity-list">
+                  {activities.length === 0 && <p className="muted" style={{ fontSize: 14 }}>暂无动态</p>}
+                  {activities.map((a) => (
+                    <div key={a.id} className="activity-item">
+                      <strong>{a.user.name}</strong>
+                      <span style={{ fontSize: 13, color: '#495057' }}>{activityText(a)}</span>
+                      <small style={{ color: '#868e96' }}>{formatTime(a.createdAt)}</small>
+                    </div>
+                  ))}
+                </div>
+              </section>
             </aside>
           </div>
         )}

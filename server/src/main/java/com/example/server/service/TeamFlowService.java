@@ -12,6 +12,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.ArrayList;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -39,6 +40,9 @@ public class TeamFlowService {
             time(rs.getTimestamp("deleted_at")), time(rs.getTimestamp("created_at")), time(rs.getTimestamp("updated_at")));
     private final RowMapper<CommentEntity> commentMapper = (rs, rowNum) -> new CommentEntity(rs.getLong("id"), rs.getLong("task_id"), rs.getLong("project_id"),
             rs.getLong("user_id"), rs.getString("content"), time(rs.getTimestamp("deleted_at")), time(rs.getTimestamp("created_at")), time(rs.getTimestamp("updated_at")));
+    private final RowMapper<TaskActivityEntity> activityMapper = (rs, rowNum) -> new TaskActivityEntity(rs.getLong("id"), rs.getLong("project_id"),
+            nullableLong(rs.getObject("task_id")), rs.getLong("user_id"), rs.getString("type"), rs.getString("content"),
+            rs.getString("old_value"), rs.getString("new_value"), time(rs.getTimestamp("created_at")));
 
     public TeamFlowService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
@@ -218,7 +222,9 @@ public class TeamFlowService {
                 optionalText(body, "priority") == null ? "MEDIUM" : optionalText(body, "priority"), assigneeId, user.id,
                 dateValue(optionalText(body, "dueDate")), sortOrder);
         touchProject(projectId);
-        return activeTask(taskId);
+        var created = activeTask(taskId);
+        recordActivity(projectId, created.id, user.id, "TASK_CREATED", created.title, null, created.title);
+        return created;
     }
 
     public TaskEntity taskForMember(UserEntity user, long taskId) {
@@ -237,13 +243,34 @@ public class TeamFlowService {
         if (assigneeId != null) {
             requireProjectMember(task.projectId, assigneeId);
         }
+        var newTitle = text(body, "title");
+        var newDescription = optionalText(body, "description");
+        var newPriority = optionalText(body, "priority") == null ? "MEDIUM" : optionalText(body, "priority");
+        var newDueDate = dateValue(optionalText(body, "dueDate"));
+
+        // Record assignee change separately for better UX
+        if (!Objects.equals(task.assigneeId, assigneeId)) {
+            var oldAssignee = task.assigneeId == null ? "未分配" : userById(task.assigneeId).name;
+            var newAssignee = assigneeId == null ? "未分配" : userById(assigneeId).name;
+            recordActivity(task.projectId, task.id, user.id, "TASK_ASSIGNED", task.title, oldAssignee, newAssignee);
+        }
+
         jdbc.update("""
                 UPDATE tasks
                 SET title = ?, description = ?, priority = ?, assignee_id = ?, due_date = ?, updated_at = NOW()
                 WHERE id = ? AND deleted_at IS NULL
-                """, text(body, "title"), optionalText(body, "description"), optionalText(body, "priority") == null ? "MEDIUM" : optionalText(body, "priority"),
-                assigneeId, dateValue(optionalText(body, "dueDate")), taskId);
-        return activeTask(taskId);
+                """, newTitle, newDescription, newPriority, assigneeId, newDueDate, taskId);
+
+        var updated = activeTask(taskId);
+        var changes = new ArrayList<String>();
+        if (!Objects.equals(task.title, newTitle)) changes.add("标题");
+        if (!Objects.equals(task.description, newDescription)) changes.add("描述");
+        if (!Objects.equals(task.priority, newPriority)) changes.add("优先级");
+        if (!Objects.equals(task.dueDate, newDueDate)) changes.add("截止日期");
+        if (!changes.isEmpty()) {
+            recordActivity(task.projectId, task.id, user.id, "TASK_UPDATED", task.title, null, String.join("、", changes));
+        }
+        return updated;
     }
 
     @Transactional
@@ -252,6 +279,9 @@ public class TeamFlowService {
         var normalized = status.toUpperCase(Locale.ROOT);
         if (!List.of("TODO", "IN_PROGRESS", "DONE").contains(normalized)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TASK_STATUS", "任务状态非法");
+        }
+        if (!task.status.equals(normalized)) {
+            recordActivity(task.projectId, task.id, user.id, "TASK_STATUS_CHANGED", task.title, task.status, normalized);
         }
         var sortOrder = (int) activeTasks(task.projectId).stream().filter(item -> item.status.equals(normalized) && item.id != taskId).count() * 1000 + 1000;
         jdbc.update("UPDATE tasks SET status = ?, sort_order = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL", normalized, sortOrder, taskId);
@@ -266,6 +296,7 @@ public class TeamFlowService {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "无任务删除权限");
         }
         jdbc.update("UPDATE tasks SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?", taskId);
+        recordActivity(task.projectId, task.id, user.id, "TASK_DELETED", task.title, null, null);
         touchProject(task.projectId);
     }
 
@@ -282,6 +313,8 @@ public class TeamFlowService {
         var task = taskForMember(user, taskId);
         var commentId = insert("INSERT INTO task_comments (task_id, project_id, user_id, content) VALUES (?, ?, ?, ?)", task.id, task.projectId, user.id, content);
         jdbc.update("UPDATE tasks SET updated_at = NOW() WHERE id = ?", task.id);
+        var summary = content.length() > 50 ? content.substring(0, 50) + "..." : content;
+        recordActivity(task.projectId, task.id, user.id, "COMMENT_ADDED", task.title, null, summary);
         return commentById(commentId);
     }
 
@@ -293,6 +326,9 @@ public class TeamFlowService {
         if (comment.userId != user.id && !isOwner(user, comment.projectId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "无评论删除权限");
         }
+        var task = activeTask(comment.taskId);
+        var summary = comment.content.length() > 50 ? comment.content.substring(0, 50) + "..." : comment.content;
+        recordActivity(comment.projectId, comment.taskId, user.id, "COMMENT_DELETED", task.title, summary, null);
         jdbc.update("UPDATE task_comments SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?", commentId);
     }
 
@@ -359,6 +395,34 @@ public class TeamFlowService {
     public Map<String, Object> commentDto(CommentEntity comment, UserEntity user) {
         return mapOf("id", comment.id, "content", comment.content, "author", userDto(userById(comment.userId), false),
                 "createdAt", comment.createdAt, "updatedAt", comment.updatedAt, "canDelete", comment.userId == user.id || isOwner(user, comment.projectId));
+    }
+
+    // ==================== Activity ====================
+
+    public Map<String, Object> activities(UserEntity user, long projectId, int page, int pageSize) {
+        requireMember(user, projectId);
+        var list = jdbc.query("""
+                SELECT * FROM task_activities
+                WHERE project_id = ?
+                ORDER BY created_at DESC
+                """, activityMapper, projectId).stream().map(a -> activityDto(a)).toList();
+        return page(list, page, pageSize);
+    }
+
+    public Map<String, Object> taskActivities(UserEntity user, long taskId, int page, int pageSize) {
+        var task = taskForMember(user, taskId);
+        var list = jdbc.query("""
+                SELECT * FROM task_activities
+                WHERE task_id = ?
+                ORDER BY created_at DESC
+                """, activityMapper, task.id).stream().map(a -> activityDto(a)).toList();
+        return page(list, page, pageSize);
+    }
+
+    public Map<String, Object> activityDto(TaskActivityEntity activity) {
+        return mapOf("id", activity.id, "projectId", activity.projectId, "taskId", activity.taskId,
+                "user", smallUser(activity.userId), "type", activity.type, "content", activity.content,
+                "oldValue", activity.oldValue, "newValue", activity.newValue, "createdAt", activity.createdAt);
     }
 
     // ==================== Private Helpers ====================
@@ -490,6 +554,11 @@ public class TeamFlowService {
 
     private void touchProject(long projectId) {
         jdbc.update("UPDATE projects SET updated_at = NOW() WHERE id = ?", projectId);
+    }
+
+    private void recordActivity(long projectId, Long taskId, long userId, String type, String content, String oldValue, String newValue) {
+        jdbc.update("INSERT INTO task_activities (project_id, task_id, user_id, type, content, old_value, new_value) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                projectId, taskId, userId, type, content, oldValue, newValue);
     }
 
     private long insert(String sql, Object... args) {

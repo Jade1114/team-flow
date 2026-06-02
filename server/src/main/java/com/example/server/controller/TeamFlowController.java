@@ -213,6 +213,24 @@ public class TeamFlowController {
         return ApiResponse.ok(service.stats(service.currentUser(authorization), projectId));
     }
 
+    @GetMapping("/api/projects/{projectId}/activities")
+    ApiResponse<Map<String, Object>> projectActivities(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable long projectId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return ApiResponse.ok(service.activities(service.currentUser(authorization), projectId, page, pageSize));
+    }
+
+    @GetMapping("/api/tasks/{taskId}/activities")
+    ApiResponse<Map<String, Object>> taskActivities(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable long taskId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return ApiResponse.ok(service.taskActivities(service.currentUser(authorization), taskId, page, pageSize));
+    }
+
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ApiResponse<Object>> handleApiException(ApiException error) {
         return ResponseEntity.status(error.status).body(ApiResponse.fail(error.code, error.getMessage()));

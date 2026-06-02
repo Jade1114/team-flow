@@ -34,6 +34,17 @@ export type Stats = {
   completionRate: number
   byAssignee: { userId: number | string; userName: string; total: number; done: number }[]
 }
+export type Activity = {
+  id: number
+  projectId: number
+  taskId?: number | null
+  user: User
+  type: string
+  content?: string | null
+  oldValue?: string | null
+  newValue?: string | null
+  createdAt: string
+}
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE'
 export type ApiResult<T> = { success: boolean; data: T; message: string; code?: string }
 

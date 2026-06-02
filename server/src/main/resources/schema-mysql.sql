@@ -101,3 +101,18 @@ CREATE TABLE IF NOT EXISTS task_comments (
   KEY idx_task_comments_project (project_id, deleted_at),
   KEY idx_task_comments_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS task_activities (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  project_id BIGINT UNSIGNED NOT NULL,
+  task_id BIGINT UNSIGNED NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  type VARCHAR(30) NOT NULL,
+  content TEXT NULL,
+  old_value VARCHAR(255) NULL,
+  new_value VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_task_activities_project_created (project_id, created_at),
+  KEY idx_task_activities_task_created (task_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
