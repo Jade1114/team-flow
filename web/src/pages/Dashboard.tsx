@@ -31,6 +31,13 @@ function formatTime(ts: string): string {
   return date.toLocaleDateString('zh-CN')
 }
 
+function isOverdue(dueDate?: string | null): boolean {
+  if (!dueDate) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return new Date(dueDate + 'T00:00:00') < today
+}
+
 const statusColumns: { status: TaskStatus; title: string }[] = [
   { status: 'TODO', title: '待处理' },
   { status: 'IN_PROGRESS', title: '进行中' },
@@ -52,11 +59,18 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
   const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null)
   const [message, setMessage] = useState('')
   const [activities, setActivities] = useState<Activity[]>([])
+  const [taskKeyword, setTaskKeyword] = useState('')
 
   const activeProject = useMemo(
     () => projects.find((item) => item.id === activeProjectId) ?? project,
     [activeProjectId, project, projects],
   )
+
+  const filteredTasks = useMemo(() => {
+    if (!taskKeyword.trim()) return tasks
+    const kw = taskKeyword.toLowerCase()
+    return tasks.filter((t) => t.title.toLowerCase().includes(kw) || (t.description ?? '').toLowerCase().includes(kw))
+  }, [tasks, taskKeyword])
 
   useEffect(() => {
     loadProjects()
@@ -116,6 +130,15 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
     await loadProjects()
   }
 
+  async function archiveProject() {
+    if (!activeProjectId) return
+    if (!confirm('确定归档该项目？归档后项目将变为只读状态。')) return
+    await api(`/projects/${activeProjectId}/archive`, { method: 'PATCH' })
+    setMessage('项目已归档')
+    await refreshProject()
+    setTimeout(() => setMessage(''), 2000)
+  }
+
   async function inviteMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!activeProjectId) return
@@ -155,11 +178,56 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
     await refreshProject()
   }
 
-  async function dropTask(status: TaskStatus) {
-    const task = tasks.find((item) => item.id === draggingTaskId)
+  async function dropOnColumn(status: TaskStatus) {
+    const draggedId = draggingTaskId
     setDraggingTaskId(null)
-    if (!task || task.status === status) return
-    await moveTask(task, status)
+    if (!draggedId || !activeProjectId) return
+
+    const draggedTask = tasks.find((t) => t.id === draggedId)
+    if (!draggedTask) return
+
+    // 同列拖拽到空白处，不处理（没有指定插入位置）
+    if (draggedTask.status === status) return
+
+    // 跨列，放到列末尾
+    const columnTasks = tasks
+      .filter((t) => t.status === status)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+    await api(`/tasks/${draggedId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
+    await api(`/projects/${activeProjectId}/tasks/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ status, orderedTaskIds: [...columnTasks.map((t) => t.id), draggedId] }),
+    })
+    await refreshProject()
+  }
+
+  async function dropOnTask(targetTask: Task, e: React.DragEvent) {
+    e.stopPropagation()
+    const draggedId = draggingTaskId
+    setDraggingTaskId(null)
+    if (!draggedId || draggedId === targetTask.id || !activeProjectId) return
+
+    const status = targetTask.status
+    const columnTasks = tasks
+      .filter((t) => t.status === status)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+    const newOrder = columnTasks.filter((t) => t.id !== draggedId)
+    const insertIndex = newOrder.findIndex((t) => t.id === targetTask.id)
+    const draggedTask = tasks.find((t) => t.id === draggedId)!
+    if (insertIndex >= 0) {
+      newOrder.splice(insertIndex, 0, draggedTask)
+    } else {
+      newOrder.push(draggedTask)
+    }
+
+    if (draggedTask.status !== status) {
+      await api(`/tasks/${draggedId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
+    }
+    await api(`/projects/${activeProjectId}/tasks/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ status, orderedTaskIds: newOrder.map((t) => t.id) }),
+    })
+    await refreshProject()
   }
 
   return (
@@ -191,7 +259,12 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{activeProject?.status ?? 'ACTIVE'}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <p className="eyebrow">{activeProject?.status ?? 'ACTIVE'}</p>
+              {project?.currentUserRole === 'OWNER' && project?.status === 'ACTIVE' && (
+                <button className="archive-btn" onClick={archiveProject}>归档项目</button>
+              )}
+            </div>
             <h1>{activeProject?.name ?? '选择或创建项目'}</h1>
             <p className="muted">{activeProject?.description ?? '左侧创建项目后即可开始协作。'}</p>
           </div>
@@ -228,45 +301,67 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
                 </div>
               </form>
 
+              <div className="board-toolbar">
+                <input
+                  className="search-input"
+                  placeholder="搜索任务标题或描述..."
+                  value={taskKeyword}
+                  onChange={(e) => setTaskKeyword(e.target.value)}
+                />
+                {taskKeyword && (
+                  <small style={{ color: '#667085' }}>
+                    找到 {filteredTasks.length} 个任务
+                  </small>
+                )}
+              </div>
+
               <div className="board">
                 {statusColumns.map((column) => (
                   <section
                     key={column.status}
                     className="column"
                     onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => dropTask(column.status)}
+                    onDrop={() => dropOnColumn(column.status)}
                   >
                     <div className="column-head">
                       <h2>{column.title}</h2>
-                      <span>{tasks.filter((task) => task.status === column.status).length}</span>
+                      <span>{filteredTasks.filter((task) => task.status === column.status).length}</span>
                     </div>
-                    {tasks.filter((task) => task.status === column.status).map((task) => (
-                      <article
-                        key={task.id}
-                        className="task-card"
-                        draggable
-                        onDragStart={() => setDraggingTaskId(task.id)}
-                        onClick={() => setSelectedTaskId(task.id)}
-                      >
-                        <div className="task-title">
-                          <strong>{task.title}</strong>
-                          <span className={`priority ${task.priority.toLowerCase()}`}>{priorityLabel[task.priority] ?? task.priority}</span>
-                        </div>
-                        <p>{task.description || '暂无描述'}</p>
-                        <div className="task-meta">
-                          <span>{task.assignee?.name ?? '未分配'}</span>
-                          <span>{task.dueDate ?? '无截止日'}</span>
-                          <span>{task.commentCount} 评论</span>
-                        </div>
-                        <div className="task-actions" onClick={(e) => e.stopPropagation()}>
-                          {statusColumns.map((target) => (
-                            <button key={target.status} disabled={target.status === task.status} onClick={() => moveTask(task, target.status)}>
-                              {target.title}
-                            </button>
-                          ))}
-                        </div>
-                      </article>
-                    ))}
+                    {filteredTasks
+                      .filter((task) => task.status === column.status)
+                      .sort((a, b) => a.sortOrder - b.sortOrder)
+                      .map((task) => (
+                        <article
+                          key={task.id}
+                          className={`task-card ${isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue' : ''}`}
+                          draggable
+                          onDragStart={() => setDraggingTaskId(task.id)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => dropOnTask(task, e)}
+                          onClick={() => setSelectedTaskId(task.id)}
+                        >
+                          <div className="task-title">
+                            <strong>{task.title}</strong>
+                            <span className={`priority ${task.priority.toLowerCase()}`}>{priorityLabel[task.priority] ?? task.priority}</span>
+                          </div>
+                          <p>{task.description || '暂无描述'}</p>
+                          <div className="task-meta">
+                            <span>{task.assignee?.name ?? '未分配'}</span>
+                            <span className={isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue-text' : ''}>
+                              {task.dueDate ?? '无截止日'}
+                              {isOverdue(task.dueDate) && task.status !== 'DONE' ? ' (逾期)' : ''}
+                            </span>
+                            <span>{task.commentCount} 评论</span>
+                          </div>
+                          <div className="task-actions" onClick={(e) => e.stopPropagation()}>
+                            {statusColumns.map((target) => (
+                              <button key={target.status} disabled={target.status === task.status} onClick={() => moveTask(task, target.status)}>
+                                {target.title}
+                              </button>
+                            ))}
+                          </div>
+                        </article>
+                      ))}
                   </section>
                 ))}
               </div>

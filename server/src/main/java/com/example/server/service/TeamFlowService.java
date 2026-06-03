@@ -300,6 +300,20 @@ public class TeamFlowService {
         touchProject(task.projectId);
     }
 
+    @Transactional
+    public void reorderTasks(UserEntity user, long projectId, String status, List<Long> orderedTaskIds) {
+        requireMember(user, projectId);
+        var normalized = status.toUpperCase(Locale.ROOT);
+        if (!List.of("TODO", "IN_PROGRESS", "DONE").contains(normalized)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TASK_STATUS", "任务状态非法");
+        }
+        for (int i = 0; i < orderedTaskIds.size(); i++) {
+            jdbc.update("UPDATE tasks SET sort_order = ?, status = ?, updated_at = NOW() WHERE id = ? AND project_id = ? AND deleted_at IS NULL",
+                    (i + 1) * 1000, normalized, orderedTaskIds.get(i), projectId);
+        }
+        touchProject(projectId);
+    }
+
     // ==================== Comment ====================
 
     public Map<String, Object> comments(UserEntity user, long taskId, int page, int pageSize) {

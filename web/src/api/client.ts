@@ -17,6 +17,7 @@ export type Task = {
   description?: string | null
   status: TaskStatus
   priority: string
+  sortOrder: number
   assignee?: User | null
   creator: User
   dueDate?: string | null

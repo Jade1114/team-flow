@@ -206,6 +206,17 @@ public class TeamFlowController {
         return ApiResponse.ok(null);
     }
 
+    @PostMapping("/api/projects/{projectId}/tasks/reorder")
+    ApiResponse<Object> reorderTasks(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable long projectId,
+            @RequestBody Map<String, Object> body) {
+        var rawList = body.get("orderedTaskIds");
+        var orderedTaskIds = rawList == null ? List.<Long>of() : ((List<?>) rawList).stream().map(v -> ((Number) v).longValue()).toList();
+        service.reorderTasks(service.currentUser(authorization), projectId, text(body, "status"), orderedTaskIds);
+        return ApiResponse.ok(null);
+    }
+
     @GetMapping("/api/projects/{projectId}/stats")
     ApiResponse<Map<String, Object>> stats(
             @RequestHeader(name = "Authorization", required = false) String authorization,
