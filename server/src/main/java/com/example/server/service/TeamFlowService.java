@@ -46,6 +46,9 @@ public class TeamFlowService {
     private final RowMapper<TaskSubtaskEntity> subtaskMapper = (rs, rowNum) -> new TaskSubtaskEntity(rs.getLong("id"), rs.getLong("task_id"),
             rs.getString("title"), rs.getBoolean("completed"), rs.getInt("sort_order"),
             time(rs.getTimestamp("created_at")), time(rs.getTimestamp("updated_at")));
+    private final RowMapper<CommentMentionEntity> mentionMapper = (rs, rowNum) -> new CommentMentionEntity(rs.getLong("id"), rs.getLong("comment_id"),
+            rs.getLong("task_id"), rs.getLong("project_id"), rs.getLong("mentioned_user_id"),
+            time(rs.getTimestamp("read_at")), time(rs.getTimestamp("created_at")));
 
     public TeamFlowService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
@@ -373,12 +376,20 @@ public class TeamFlowService {
     }
 
     @Transactional
-    public CommentEntity addComment(UserEntity user, long taskId, String content) {
+    public CommentEntity addComment(UserEntity user, long taskId, String content, List<Long> mentionUserIds) {
         var task = taskForMember(user, taskId);
         var commentId = insert("INSERT INTO task_comments (task_id, project_id, user_id, content) VALUES (?, ?, ?, ?)", task.id, task.projectId, user.id, content);
         jdbc.update("UPDATE tasks SET updated_at = NOW() WHERE id = ?", task.id);
         var summary = content.length() > 50 ? content.substring(0, 50) + "..." : content;
         recordActivity(task.projectId, task.id, user.id, "COMMENT_ADDED", task.title, null, summary);
+        if (mentionUserIds != null) {
+            for (var mentionedUserId : mentionUserIds) {
+                if (mentionedUserId != null && mentionedUserId != user.id) {
+                    insert("INSERT INTO comment_mentions (comment_id, task_id, project_id, mentioned_user_id) VALUES (?, ?, ?, ?)",
+                            commentId, task.id, task.projectId, mentionedUserId);
+                }
+            }
+        }
         return commentById(commentId);
     }
 
@@ -465,6 +476,43 @@ public class TeamFlowService {
         return mapOf("totalTasks", total, "todoTasks", countStatus(list, "TODO"), "inProgressTasks", countStatus(list, "IN_PROGRESS"),
                 "doneTasks", done, "overdueTasks", overdue, "completionRate", total == 0 ? 0 : Math.round(done * 10000.0 / total) / 100.0,
                 "byStatus", byStatus, "byPriority", byPriority, "byAssignee", byAssignee);
+    }
+
+    public Map<String, Object> notifications(UserEntity user, int page, int pageSize) {
+        var sql = """
+                SELECT cm.id, cm.comment_id, cm.task_id, cm.project_id, cm.mentioned_user_id, cm.read_at, cm.created_at,
+                       tc.content as comment_content, t.title as task_title, p.name as project_name,
+                       u.id as author_id, u.username as author_name, u.email as author_email, u.avatar_url as author_avatar
+                FROM comment_mentions cm
+                JOIN task_comments tc ON tc.id = cm.comment_id AND tc.deleted_at IS NULL
+                JOIN tasks t ON t.id = cm.task_id AND t.deleted_at IS NULL
+                JOIN projects p ON p.id = cm.project_id AND p.deleted_at IS NULL
+                JOIN users u ON u.id = tc.user_id AND u.deleted_at IS NULL
+                WHERE cm.mentioned_user_id = ?
+                ORDER BY cm.created_at DESC
+                """;
+        var list = jdbc.query(sql, (rs, rowNum) -> {
+            var mention = new CommentMentionEntity(rs.getLong("id"), rs.getLong("comment_id"), rs.getLong("task_id"),
+                    rs.getLong("project_id"), rs.getLong("mentioned_user_id"), time(rs.getTimestamp("read_at")), time(rs.getTimestamp("created_at")));
+            var author = new UserEntity(rs.getLong("author_id"), rs.getString("author_name"), rs.getString("author_email"), null,
+                    rs.getString("author_avatar"), null, null);
+            var dto = mentionDto(mention, author);
+            dto.put("taskTitle", rs.getString("task_title"));
+            dto.put("projectName", rs.getString("project_name"));
+            dto.put("content", rs.getString("comment_content"));
+            return dto;
+        }, user.id);
+        return page(list, page, pageSize);
+    }
+
+    @Transactional
+    public void markNotificationRead(UserEntity user, long mentionId) {
+        jdbc.update("UPDATE comment_mentions SET read_at = NOW() WHERE id = ? AND mentioned_user_id = ?", mentionId, user.id);
+    }
+
+    public long unreadNotificationCount(UserEntity user) {
+        var count = jdbc.queryForObject("SELECT COUNT(*) FROM comment_mentions WHERE mentioned_user_id = ? AND read_at IS NULL", Long.class, user.id);
+        return count == null ? 0 : count;
     }
 
     public Map<String, Object> myTasks(UserEntity user, Long projectId, String status, String keyword, int page, int pageSize) {
@@ -564,6 +612,11 @@ public class TeamFlowService {
     public Map<String, Object> commentDto(CommentEntity comment, UserEntity user) {
         return mapOf("id", comment.id, "content", comment.content, "author", userDto(userById(comment.userId), false),
                 "createdAt", comment.createdAt, "updatedAt", comment.updatedAt, "canDelete", comment.userId == user.id || isOwner(user, comment.projectId));
+    }
+
+    public Map<String, Object> mentionDto(CommentMentionEntity mention, UserEntity author) {
+        return mapOf("id", mention.id, "commentId", mention.commentId, "taskId", mention.taskId, "projectId", mention.projectId,
+                "mentionedBy", userDto(author, false), "readAt", mention.readAt, "createdAt", mention.createdAt);
     }
 
     // ==================== Activity ====================

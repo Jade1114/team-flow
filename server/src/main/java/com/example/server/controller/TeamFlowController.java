@@ -275,7 +275,9 @@ public class TeamFlowController {
             @RequestHeader(name = "Authorization", required = false) String authorization,
             @PathVariable long taskId,
             @RequestBody Map<String, Object> body) {
-        return created(service.commentDto(service.addComment(service.currentUser(authorization), taskId, text(body, "content")), service.currentUser(authorization)));
+        var rawMentions = body.get("mentions");
+        var mentionUserIds = rawMentions == null ? List.<Long>of() : ((List<?>) rawMentions).stream().map(v -> ((Number) v).longValue()).toList();
+        return created(service.commentDto(service.addComment(service.currentUser(authorization), taskId, text(body, "content"), mentionUserIds), service.currentUser(authorization)));
     }
 
     @DeleteMapping("/api/comments/{commentId}")
@@ -320,6 +322,28 @@ public class TeamFlowController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
         return ApiResponse.ok(service.taskActivities(service.currentUser(authorization), taskId, page, pageSize));
+    }
+
+    @GetMapping("/api/notifications")
+    ApiResponse<Map<String, Object>> notifications(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return ApiResponse.ok(service.notifications(service.currentUser(authorization), page, pageSize));
+    }
+
+    @PatchMapping("/api/notifications/{mentionId}/read")
+    ApiResponse<Object> markNotificationRead(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable long mentionId) {
+        service.markNotificationRead(service.currentUser(authorization), mentionId);
+        return ApiResponse.ok(null);
+    }
+
+    @GetMapping("/api/notifications/unread-count")
+    ApiResponse<Map<String, Object>> unreadNotificationCount(
+            @RequestHeader(name = "Authorization", required = false) String authorization) {
+        return ApiResponse.ok(Map.of("count", service.unreadNotificationCount(service.currentUser(authorization))));
     }
 
     @ExceptionHandler(ApiException.class)

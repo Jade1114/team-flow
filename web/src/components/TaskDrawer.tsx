@@ -29,9 +29,19 @@ function formatTime(ts: string): string {
   return date.toLocaleDateString('zh-CN')
 }
 
+function renderCommentContent(content: string) {
+  const parts = content.split(/(@[^\s@]+)/g)
+  return parts.map((part, i) => {
+    if (part.startsWith('@')) {
+      return <span key={i} className="mention-highlight">{part}</span>
+    }
+    return <span key={i}>{part}</span>
+  })
+}
+
 export default function TaskDrawer({
   taskId,
-  members,
+  members: propMembers,
   onClose,
   onRefresh,
 }: {
@@ -55,6 +65,15 @@ export default function TaskDrawer({
     dueDate: '',
   })
 
+  // @mention states
+  const [showMentions, setShowMentions] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const [mentionUserIds, setMentionUserIds] = useState<number[]>([])
+  const [localMembers, setLocalMembers] = useState<Member[]>([])
+
+  const members = propMembers.length > 0 ? propMembers : localMembers
+
   useEffect(() => {
     loadTask()
   }, [taskId])
@@ -77,13 +96,26 @@ export default function TaskDrawer({
       assigneeId: detail.assignee?.id?.toString() ?? '',
       dueDate: detail.dueDate ?? '',
     })
+    if (propMembers.length === 0) {
+      try {
+        const data = await api<{ items: Member[] }>(`/projects/${detail.projectId}/members`)
+        setLocalMembers(data.items)
+      } catch {
+        // ignore
+      }
+    }
   }
 
   async function addComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!commentText.trim()) return
-    await api(`/tasks/${taskId}/comments`, { method: 'POST', body: JSON.stringify({ content: commentText }) })
+    await api(`/tasks/${taskId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ content: commentText, mentions: mentionUserIds }),
+    })
     setCommentText('')
+    setMentionUserIds([])
+    setShowMentions(false)
     await loadTask()
     onRefresh()
   }
@@ -140,11 +172,84 @@ export default function TaskDrawer({
     onRefresh()
   }
 
+  // @mention handlers
+  function handleCommentKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (!showMentions) return
+    const filtered = getFilteredMembers()
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setMentionIndex((i) => (i + 1) % filtered.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setMentionIndex((i) => (i - 1 + filtered.length) % filtered.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (filtered.length > 0) {
+        selectMention(filtered[mentionIndex])
+      }
+    } else if (e.key === 'Escape') {
+      setShowMentions(false)
+    }
+  }
+
+  function handleCommentChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const value = e.target.value
+    const cursor = e.target.selectionStart
+    setCommentText(value)
+
+    // Check if we are typing an @mention
+    const beforeCursor = value.slice(0, cursor)
+    const lastAtIndex = beforeCursor.lastIndexOf('@')
+
+    if (lastAtIndex >= 0) {
+      const afterAt = beforeCursor.slice(lastAtIndex + 1)
+      // If there is no space/newline between @ and cursor, we are in mention mode
+      if (!afterAt.includes(' ') && !afterAt.includes('\n') && !afterAt.includes('@')) {
+        setMentionQuery(afterAt)
+        setShowMentions(true)
+        setMentionIndex(0)
+        return
+      }
+    }
+
+    setShowMentions(false)
+  }
+
+  function getFilteredMembers() {
+    if (!mentionQuery) return members
+    const q = mentionQuery.toLowerCase()
+    return members.filter((m) => m.user.name.toLowerCase().includes(q))
+  }
+
+  function selectMention(member: Member) {
+    const textarea = document.getElementById('comment-textarea') as HTMLTextAreaElement
+    const cursor = textarea?.selectionStart ?? commentText.length
+    const beforeCursor = commentText.slice(0, cursor)
+    const lastAtIndex = beforeCursor.lastIndexOf('@')
+    if (lastAtIndex < 0) return
+
+    const beforeAt = commentText.slice(0, lastAtIndex)
+    const afterCursor = commentText.slice(cursor)
+    const newText = beforeAt + `@${member.user.name} ` + afterCursor
+    setCommentText(newText)
+    if (!mentionUserIds.includes(member.user.id)) {
+      setMentionUserIds((prev) => [...prev, member.user.id])
+    }
+    setShowMentions(false)
+    setTimeout(() => {
+      textarea?.focus()
+      const pos = beforeAt.length + member.user.name.length + 2 // +2 for '@' and ' '
+      textarea?.setSelectionRange(pos, pos)
+    }, 0)
+  }
+
   const subtaskProgress = task && task.subtaskCount && task.subtaskCount > 0
     ? `${task.completedSubtaskCount}/${task.subtaskCount}`
     : null
 
   if (!task) return null
+
+  const filteredMembers = getFilteredMembers()
 
   return (
     <aside className="drawer">
@@ -255,11 +360,30 @@ export default function TaskDrawer({
                 </button>
               )}
             </div>
-            <p>{comment.content}</p>
+            <p>{renderCommentContent(comment.content)}</p>
           </article>
         ))}
-        <form onSubmit={addComment}>
-          <textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="写下评论" />
+        <form onSubmit={addComment} style={{ position: 'relative' }}>
+          {showMentions && filteredMembers.length > 0 && (
+            <div className="mention-dropdown">
+              {filteredMembers.map((member, idx) => (
+                <div
+                  key={member.user.id}
+                  className={`mention-option ${idx === mentionIndex ? 'active' : ''}`}
+                  onClick={() => selectMention(member)}
+                >
+                  {member.user.name}
+                </div>
+              ))}
+            </div>
+          )}
+          <textarea
+            id="comment-textarea"
+            value={commentText}
+            onChange={handleCommentChange}
+            onKeyDown={handleCommentKeyDown}
+            placeholder="写下评论，输入 @ 提及成员"
+          />
           <button type="submit">发送评论</button>
         </form>
       </section>

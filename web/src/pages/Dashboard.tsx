@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { User, Project, Member, Task, Stats, TaskStatus, Activity } from '../api/client'
 import TaskDrawer from '../components/TaskDrawer'
+import NotificationBell from '../components/NotificationBell'
 
 const statusMap: Record<string, string> = { TODO: '待处理', IN_PROGRESS: '进行中', DONE: '已完成' }
 
@@ -37,6 +38,14 @@ function isOverdue(dueDate?: string | null): boolean {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return new Date(dueDate + 'T00:00:00') < today
+}
+
+function parseLabelString(input: string): { name: string; color: string }[] {
+  return input
+    .split(/[,，]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((name) => ({ name, color: '' }))
 }
 
 const statusColumns: { status: TaskStatus; title: string }[] = [
@@ -319,6 +328,7 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
             </button>
           ))}
         </nav>
+        <NotificationBell onOpenTask={(taskId, projectId) => { setActiveProjectId(projectId); setSelectedTaskId(taskId) }} />
         <button className="theme-toggle" onClick={onToggleTheme}>{theme === 'dark' ? '☀️ 浅色模式' : '🌙 深色模式'}</button>
         <button className="ghost" onClick={() => setShowProfile(true)}>个人资料</button>
         <button className="ghost" onClick={onLogout}>退出登录</button>

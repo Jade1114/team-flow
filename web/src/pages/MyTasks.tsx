@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Task, Project, User } from '../api/client'
 import TaskDrawer from '../components/TaskDrawer'
+import NotificationBell from '../components/NotificationBell'
 
 const statusMap: Record<string, string> = { TODO: '待处理', IN_PROGRESS: '进行中', DONE: '已完成' }
 const priorityLabel: Record<string, string> = { LOW: '低', MEDIUM: '中', HIGH: '高', URGENT: '紧急' }
@@ -85,6 +86,7 @@ export default function MyTasks({ user, onLogout, theme, onToggleTheme }: { user
           <button onClick={() => navigate('/')}>项目看板</button>
           <button className="active">我的任务</button>
         </nav>
+        <NotificationBell onOpenTask={(taskId) => { setSelectedTaskId(taskId) }} />
         <button className="theme-toggle" onClick={onToggleTheme}>{theme === 'dark' ? '☀️ 浅色模式' : '🌙 深色模式'}</button>
         <button className="ghost" onClick={onLogout}>退出登录</button>
       </aside>

@@ -129,3 +129,17 @@ CREATE TABLE IF NOT EXISTS task_subtasks (
   PRIMARY KEY (id),
   KEY idx_task_subtasks_task (task_id, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS comment_mentions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  comment_id BIGINT UNSIGNED NOT NULL,
+  task_id BIGINT UNSIGNED NOT NULL,
+  project_id BIGINT UNSIGNED NOT NULL,
+  mentioned_user_id BIGINT UNSIGNED NOT NULL,
+  read_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_comment_mentions_user_read (mentioned_user_id, read_at),
+  KEY idx_comment_mentions_comment (comment_id),
+  KEY idx_comment_mentions_task (task_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

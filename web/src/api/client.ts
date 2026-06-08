@@ -62,6 +62,18 @@ export type Activity = {
   newValue?: string | null
   createdAt: string
 }
+export type Notification = {
+  id: number
+  commentId: number
+  taskId: number
+  projectId: number
+  taskTitle: string
+  projectName: string
+  mentionedBy: User
+  content: string
+  readAt: string | null
+  createdAt: string
+}
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE'
 export type ApiResult<T> = { success: boolean; data: T; message: string; code?: string }
 

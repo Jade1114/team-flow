@@ -721,6 +721,181 @@ progress {
   color: var(--text-sidebar);
 }
 
+/* Notification bell */
+.notification-bell {
+  position: relative;
+}
+
+.bell-btn {
+  position: relative;
+  background: transparent;
+  border: 1px solid var(--border-sidebar);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-sidebar-muted);
+}
+
+.bell-btn:hover {
+  color: var(--text-sidebar);
+}
+
+.bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.notification-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 320px;
+  max-height: 400px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-main);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.notification-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-main);
+}
+
+.notification-header strong {
+  font-size: 14px;
+}
+
+.ghost-link {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.notification-list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.notification-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.notification-item {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-main);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.notification-item:hover {
+  background: var(--bg-hover);
+}
+
+.notification-item.unread {
+  background: var(--accent-light);
+}
+
+.notification-item.unread:hover {
+  background: var(--accent-light-hover, var(--bg-hover));
+}
+
+.notification-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.notification-meta strong {
+  font-size: 13px;
+}
+
+.notification-meta span {
+  color: var(--text-muted);
+}
+
+.notification-task {
+  font-size: 13px;
+  color: var(--text-main);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.notification-preview {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+
+.notification-item small {
+  color: var(--text-activity-time);
+  font-size: 11px;
+}
+
+/* Mention in comments */
+.mention-highlight {
+  color: var(--accent);
+  font-weight: 600;
+  background: var(--accent-light);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.mention-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-main);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 20;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.mention-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.mention-option:hover,
+.mention-option.active {
+  background: var(--bg-hover);
+}
+
 /* Batch operations */
 .task-card.selected {
   border-color: var(--accent);
