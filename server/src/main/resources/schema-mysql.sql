@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   creator_id BIGINT UNSIGNED NOT NULL,
   due_date DATE NULL,
   sort_order INT NOT NULL DEFAULT 0,
+  labels JSON NULL,
   deleted_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -115,4 +116,16 @@ CREATE TABLE IF NOT EXISTS task_activities (
   PRIMARY KEY (id),
   KEY idx_task_activities_project_created (project_id, created_at),
   KEY idx_task_activities_task_created (task_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS task_subtasks (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  task_id BIGINT UNSIGNED NOT NULL,
+  title VARCHAR(200) NOT NULL,
+  completed TINYINT(1) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_task_subtasks_task (task_id, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

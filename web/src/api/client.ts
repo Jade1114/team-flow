@@ -10,6 +10,8 @@ export type Project = {
   taskSummary: { total: number; todo?: number; inProgress?: number; done: number; completionRate: number }
 }
 export type Member = { id: number; user: User; role: string; joinedAt: string }
+export type Label = { name: string; color: string }
+
 export type Task = {
   id: number
   projectId: number
@@ -22,8 +24,22 @@ export type Task = {
   creator: User
   dueDate?: string | null
   commentCount: number
+  subtaskCount?: number
+  completedSubtaskCount?: number
+  labels?: Label[]
   canEdit?: boolean
   canDelete?: boolean
+  projectName?: string | null
+}
+
+export type Subtask = {
+  id: number
+  taskId: number
+  title: string
+  completed: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
 }
 export type Comment = { id: number; content: string; author: User; createdAt: string; canDelete: boolean }
 export type Stats = {

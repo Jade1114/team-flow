@@ -37,12 +37,15 @@ public class TeamFlowService {
     private final RowMapper<TaskEntity> taskMapper = (rs, rowNum) -> new TaskEntity(rs.getLong("id"), rs.getLong("project_id"), rs.getString("title"),
             rs.getString("description"), rs.getString("status"), rs.getString("priority"), nullableLong(rs.getObject("assignee_id")),
             rs.getLong("creator_id"), rs.getDate("due_date") == null ? null : rs.getDate("due_date").toLocalDate(), rs.getInt("sort_order"),
-            time(rs.getTimestamp("deleted_at")), time(rs.getTimestamp("created_at")), time(rs.getTimestamp("updated_at")));
+            rs.getString("labels"), time(rs.getTimestamp("deleted_at")), time(rs.getTimestamp("created_at")), time(rs.getTimestamp("updated_at")));
     private final RowMapper<CommentEntity> commentMapper = (rs, rowNum) -> new CommentEntity(rs.getLong("id"), rs.getLong("task_id"), rs.getLong("project_id"),
             rs.getLong("user_id"), rs.getString("content"), time(rs.getTimestamp("deleted_at")), time(rs.getTimestamp("created_at")), time(rs.getTimestamp("updated_at")));
     private final RowMapper<TaskActivityEntity> activityMapper = (rs, rowNum) -> new TaskActivityEntity(rs.getLong("id"), rs.getLong("project_id"),
             nullableLong(rs.getObject("task_id")), rs.getLong("user_id"), rs.getString("type"), rs.getString("content"),
             rs.getString("old_value"), rs.getString("new_value"), time(rs.getTimestamp("created_at")));
+    private final RowMapper<TaskSubtaskEntity> subtaskMapper = (rs, rowNum) -> new TaskSubtaskEntity(rs.getLong("id"), rs.getLong("task_id"),
+            rs.getString("title"), rs.getBoolean("completed"), rs.getInt("sort_order"),
+            time(rs.getTimestamp("created_at")), time(rs.getTimestamp("updated_at")));
 
     public TeamFlowService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
@@ -142,6 +145,13 @@ public class TeamFlowService {
         return projectForMember(user, projectId);
     }
 
+    @Transactional
+    public ProjectEntity unarchiveProject(UserEntity user, long projectId) {
+        requireOwner(user, projectId);
+        jdbc.update("UPDATE projects SET status = 'ACTIVE', updated_at = NOW() WHERE id = ? AND deleted_at IS NULL", projectId);
+        return projectForMember(user, projectId);
+    }
+
     // ==================== Member ====================
 
     public List<Map<String, Object>> members(UserEntity user, long projectId, String keyword) {
@@ -196,15 +206,21 @@ public class TeamFlowService {
         return page(filtered, page, pageSize);
     }
 
-    public Map<String, Object> board(UserEntity user, long projectId, Long assigneeId, String keyword) {
+    public Map<String, Object> board(UserEntity user, long projectId, Long assigneeId, String keyword, String label) {
         requireMember(user, projectId);
         var statuses = List.of(List.of("TODO", "待处理"), List.of("IN_PROGRESS", "进行中"), List.of("DONE", "已完成"));
         var columns = statuses.stream().map(status -> Map.of("status", status.get(0), "title", status.get(1), "tasks", activeTasks(projectId).stream()
                 .filter(task -> task.status.equals(status.get(0)))
                 .filter(task -> assigneeId == null || Objects.equals(task.assigneeId, assigneeId))
                 .filter(task -> keyword == null || task.title.toLowerCase(Locale.ROOT).contains(keyword.toLowerCase(Locale.ROOT)))
+                .filter(task -> label == null || taskHasLabel(task, label))
                 .map(task -> taskDto(task, user, false)).toList())).toList();
         return Map.of("columns", columns);
+    }
+
+    private boolean taskHasLabel(TaskEntity task, String label) {
+        if (task.labels == null || task.labels.isBlank()) return false;
+        return task.labels.toLowerCase(Locale.ROOT).contains(label.toLowerCase(Locale.ROOT));
     }
 
     @Transactional
@@ -215,12 +231,14 @@ public class TeamFlowService {
             requireProjectMember(projectId, assigneeId);
         }
         var sortOrder = (activeTasks(projectId).stream().filter(task -> "TODO".equals(task.status)).toList().size() + 1) * 1000;
+        var labels = body.get("labels");
+        var labelsJson = labels == null ? null : labels.toString();
         var taskId = insert("""
-                INSERT INTO tasks (project_id, title, description, status, priority, assignee_id, creator_id, due_date, sort_order)
-                VALUES (?, ?, ?, 'TODO', ?, ?, ?, ?, ?)
+                INSERT INTO tasks (project_id, title, description, status, priority, assignee_id, creator_id, due_date, sort_order, labels)
+                VALUES (?, ?, ?, 'TODO', ?, ?, ?, ?, ?, ?)
                 """, projectId, text(body, "title"), optionalText(body, "description"),
                 optionalText(body, "priority") == null ? "MEDIUM" : optionalText(body, "priority"), assigneeId, user.id,
-                dateValue(optionalText(body, "dueDate")), sortOrder);
+                dateValue(optionalText(body, "dueDate")), sortOrder, labelsJson);
         touchProject(projectId);
         var created = activeTask(taskId);
         recordActivity(projectId, created.id, user.id, "TASK_CREATED", created.title, null, created.title);
@@ -247,6 +265,8 @@ public class TeamFlowService {
         var newDescription = optionalText(body, "description");
         var newPriority = optionalText(body, "priority") == null ? "MEDIUM" : optionalText(body, "priority");
         var newDueDate = dateValue(optionalText(body, "dueDate"));
+        var labels = body.get("labels");
+        var labelsJson = labels == null ? task.labels : labels.toString();
 
         // Record assignee change separately for better UX
         if (!Objects.equals(task.assigneeId, assigneeId)) {
@@ -257,9 +277,9 @@ public class TeamFlowService {
 
         jdbc.update("""
                 UPDATE tasks
-                SET title = ?, description = ?, priority = ?, assignee_id = ?, due_date = ?, updated_at = NOW()
+                SET title = ?, description = ?, priority = ?, assignee_id = ?, due_date = ?, labels = ?, updated_at = NOW()
                 WHERE id = ? AND deleted_at IS NULL
-                """, newTitle, newDescription, newPriority, assigneeId, newDueDate, taskId);
+                """, newTitle, newDescription, newPriority, assigneeId, newDueDate, labelsJson, taskId);
 
         var updated = activeTask(taskId);
         var changes = new ArrayList<String>();
@@ -267,6 +287,7 @@ public class TeamFlowService {
         if (!Objects.equals(task.description, newDescription)) changes.add("描述");
         if (!Objects.equals(task.priority, newPriority)) changes.add("优先级");
         if (!Objects.equals(task.dueDate, newDueDate)) changes.add("截止日期");
+        if (!Objects.equals(task.labels, labelsJson)) changes.add("标签");
         if (!changes.isEmpty()) {
             recordActivity(task.projectId, task.id, user.id, "TASK_UPDATED", task.title, null, String.join("、", changes));
         }
@@ -298,6 +319,35 @@ public class TeamFlowService {
         jdbc.update("UPDATE tasks SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?", taskId);
         recordActivity(task.projectId, task.id, user.id, "TASK_DELETED", task.title, null, null);
         touchProject(task.projectId);
+    }
+
+    @Transactional
+    public void batchMoveTasks(UserEntity user, List<Long> taskIds, String status) {
+        var normalized = status.toUpperCase(Locale.ROOT);
+        if (!List.of("TODO", "IN_PROGRESS", "DONE").contains(normalized)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TASK_STATUS", "任务状态非法");
+        }
+        for (var taskId : taskIds) {
+            var task = taskForMember(user, taskId);
+            if (!task.status.equals(normalized)) {
+                recordActivity(task.projectId, task.id, user.id, "TASK_STATUS_CHANGED", task.title, task.status, normalized);
+            }
+            jdbc.update("UPDATE tasks SET status = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL", normalized, taskId);
+            touchProject(task.projectId);
+        }
+    }
+
+    @Transactional
+    public void batchDeleteTasks(UserEntity user, List<Long> taskIds) {
+        for (var taskId : taskIds) {
+            var task = taskForMember(user, taskId);
+            if (!canManageTask(user, task)) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "无任务删除权限: " + task.title);
+            }
+            jdbc.update("UPDATE tasks SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?", taskId);
+            recordActivity(task.projectId, task.id, user.id, "TASK_DELETED", task.title, null, null);
+            touchProject(task.projectId);
+        }
     }
 
     @Transactional
@@ -346,6 +396,56 @@ public class TeamFlowService {
         jdbc.update("UPDATE task_comments SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?", commentId);
     }
 
+    // ==================== Subtask ====================
+
+    public List<Map<String, Object>> subtasks(UserEntity user, long taskId) {
+        var task = taskForMember(user, taskId);
+        return jdbc.query("SELECT * FROM task_subtasks WHERE task_id = ? ORDER BY sort_order ASC, created_at ASC", subtaskMapper, task.id).stream()
+                .map(this::subtaskDto).toList();
+    }
+
+    @Transactional
+    public TaskSubtaskEntity createSubtask(UserEntity user, long taskId, String title) {
+        var task = taskForMember(user, taskId);
+        var count = jdbc.queryForObject("SELECT COUNT(*) FROM task_subtasks WHERE task_id = ?", Long.class, task.id);
+        var subtaskId = insert("INSERT INTO task_subtasks (task_id, title, sort_order) VALUES (?, ?, ?)", task.id, title, (count + 1) * 1000);
+        jdbc.update("UPDATE tasks SET updated_at = NOW() WHERE id = ?", task.id);
+        return subtaskById(subtaskId);
+    }
+
+    @Transactional
+    public TaskSubtaskEntity updateSubtask(UserEntity user, long subtaskId, String title, Boolean completed) {
+        var subtask = subtaskById(subtaskId);
+        taskForMember(user, subtask.taskId());
+        if (title != null) {
+            jdbc.update("UPDATE task_subtasks SET title = ?, updated_at = NOW() WHERE id = ?", title, subtaskId);
+        }
+        if (completed != null) {
+            jdbc.update("UPDATE task_subtasks SET completed = ?, updated_at = NOW() WHERE id = ?", completed, subtaskId);
+        }
+        jdbc.update("UPDATE tasks SET updated_at = NOW() WHERE id = ?", subtask.taskId());
+        return subtaskById(subtaskId);
+    }
+
+    @Transactional
+    public void deleteSubtask(UserEntity user, long subtaskId) {
+        var subtask = subtaskById(subtaskId);
+        taskForMember(user, subtask.taskId());
+        jdbc.update("DELETE FROM task_subtasks WHERE id = ?", subtaskId);
+        jdbc.update("UPDATE tasks SET updated_at = NOW() WHERE id = ?", subtask.taskId());
+    }
+
+    public Map<String, Object> subtaskDto(TaskSubtaskEntity subtask) {
+        return mapOf("id", subtask.id(), "taskId", subtask.taskId(), "title", subtask.title(),
+                "completed", subtask.completed(), "sortOrder", subtask.sortOrder(),
+                "createdAt", subtask.createdAt(), "updatedAt", subtask.updatedAt());
+    }
+
+    private TaskSubtaskEntity subtaskById(long subtaskId) {
+        return queryOne("SELECT * FROM task_subtasks WHERE id = ?", subtaskMapper, subtaskId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "SUBTASK_NOT_FOUND", "子任务不存在"));
+    }
+
     // ==================== Stats ====================
 
     public Map<String, Object> stats(UserEntity user, long projectId) {
@@ -365,6 +465,43 @@ public class TeamFlowService {
         return mapOf("totalTasks", total, "todoTasks", countStatus(list, "TODO"), "inProgressTasks", countStatus(list, "IN_PROGRESS"),
                 "doneTasks", done, "overdueTasks", overdue, "completionRate", total == 0 ? 0 : Math.round(done * 10000.0 / total) / 100.0,
                 "byStatus", byStatus, "byPriority", byPriority, "byAssignee", byAssignee);
+    }
+
+    public Map<String, Object> myTasks(UserEntity user, Long projectId, String status, String keyword, int page, int pageSize) {
+        var sql = """
+                SELECT t.* FROM tasks t
+                JOIN project_members pm ON pm.project_id = t.project_id AND pm.user_id = ? AND pm.deleted_at IS NULL
+                WHERE t.assignee_id = ? AND t.deleted_at IS NULL
+                """;
+        var params = new ArrayList<Object>();
+        params.add(user.id);
+        params.add(user.id);
+        if (projectId != null) {
+            sql += " AND t.project_id = ?";
+            params.add(projectId);
+        }
+        if (status != null && !status.isBlank()) {
+            sql += " AND t.status = ?";
+            params.add(status.toUpperCase(Locale.ROOT));
+        }
+        sql += " ORDER BY t.due_date IS NULL, t.due_date ASC, t.updated_at DESC";
+        var list = jdbc.query(sql, taskMapper, params.toArray()).stream()
+                .filter(task -> keyword == null || task.title.toLowerCase(Locale.ROOT).contains(keyword.toLowerCase(Locale.ROOT)))
+                .map(task -> {
+                    var dto = taskDto(task, user, false);
+                    dto.put("projectName", projectById(task.projectId).map(project -> project.name).orElse(""));
+                    return dto;
+                }).toList();
+        return page(list, page, pageSize);
+    }
+
+    @Transactional
+    public UserEntity updateUser(UserEntity user, String name, String avatarUrl) {
+        if (name == null || name.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "姓名不能为空");
+        }
+        jdbc.update("UPDATE users SET username = ?, avatar_url = ?, updated_at = NOW() WHERE id = ?", name, avatarUrl, user.id);
+        return userById(user.id);
     }
 
     // ==================== DTO Helpers ====================
@@ -393,10 +530,17 @@ public class TeamFlowService {
     }
 
     public Map<String, Object> taskDto(TaskEntity task, UserEntity user, boolean detail) {
+        var commentCount = jdbc.queryForObject("SELECT COUNT(*) FROM task_comments WHERE task_id = ? AND deleted_at IS NULL", Long.class, task.id);
+        var subtaskStats = jdbc.queryForObject("SELECT COUNT(*), SUM(completed) FROM task_subtasks WHERE task_id = ?", (rs, rowNum) -> List.of(rs.getLong(1), rs.getLong(2)), task.id);
+        var totalSubtasks = subtaskStats.get(0);
+        var completedSubtasks = subtaskStats.get(1);
         var dto = mapOf("id", task.id, "projectId", task.projectId, "title", task.title, "description", task.description, "status", task.status,
                 "priority", task.priority, "sortOrder", task.sortOrder, "assignee", task.assigneeId == null ? null : smallUser(task.assigneeId),
                 "creator", smallUser(task.creatorId), "dueDate", task.dueDate,
-                "commentCount", jdbc.queryForObject("SELECT COUNT(*) FROM task_comments WHERE task_id = ? AND deleted_at IS NULL", Long.class, task.id),
+                "commentCount", commentCount,
+                "subtaskCount", totalSubtasks,
+                "completedSubtaskCount", completedSubtasks == null ? 0 : completedSubtasks,
+                "labels", parseLabels(task.labels),
                 "createdAt", task.createdAt, "updatedAt", task.updatedAt);
         if (detail) {
             dto.put("projectName", projectById(task.projectId).map(project -> project.name).orElse(""));
@@ -404,6 +548,17 @@ public class TeamFlowService {
             dto.put("canDelete", canManageTask(user, task));
         }
         return dto;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<Map<String, Object>> parseLabels(String labelsJson) {
+        if (labelsJson == null || labelsJson.isBlank()) return List.of();
+        try {
+            var parser = org.springframework.boot.json.JsonParserFactory.getJsonParser();
+            return (List) parser.parseList(labelsJson);
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     public Map<String, Object> commentDto(CommentEntity comment, UserEntity user) {

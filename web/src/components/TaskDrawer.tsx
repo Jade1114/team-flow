@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from 'react'
 import { api } from '../api/client'
-import type { Task, Comment, Member, Activity } from '../api/client'
+import type { Task, Comment, Member, Activity, Subtask } from '../api/client'
 
 const priorityLabel: Record<string, string> = { LOW: '低', MEDIUM: '中', HIGH: '高', URGENT: '紧急' }
 const statusMap: Record<string, string> = { TODO: '待处理', IN_PROGRESS: '进行中', DONE: '已完成' }
@@ -43,7 +43,9 @@ export default function TaskDrawer({
   const [task, setTask] = useState<Task | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
   const [activities, setActivities] = useState<Activity[]>([])
+  const [subtasks, setSubtasks] = useState<Subtask[]>([])
   const [commentText, setCommentText] = useState('')
+  const [subtaskText, setSubtaskText] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [editForm, setEditForm] = useState({
     title: '',
@@ -58,14 +60,16 @@ export default function TaskDrawer({
   }, [taskId])
 
   async function loadTask() {
-    const [detail, commentPage, activityPage] = await Promise.all([
+    const [detail, commentPage, activityPage, subtaskPage] = await Promise.all([
       api<Task>(`/tasks/${taskId}`),
       api<{ items: Comment[] }>(`/tasks/${taskId}/comments`),
       api<{ items: Activity[] }>(`/tasks/${taskId}/activities`),
+      api<{ items: Subtask[] }>(`/tasks/${taskId}/subtasks`),
     ])
     setTask(detail)
     setComments(commentPage.items)
     setActivities(activityPage.items)
+    setSubtasks(subtaskPage.items)
     setEditForm({
       title: detail.title,
       description: detail.description ?? '',
@@ -87,6 +91,27 @@ export default function TaskDrawer({
   async function deleteComment(commentId: number) {
     if (!confirm('确定删除这条评论？')) return
     await api(`/comments/${commentId}`, { method: 'DELETE' })
+    await loadTask()
+    onRefresh()
+  }
+
+  async function addSubtask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!subtaskText.trim()) return
+    await api(`/tasks/${taskId}/subtasks`, { method: 'POST', body: JSON.stringify({ title: subtaskText }) })
+    setSubtaskText('')
+    await loadTask()
+    onRefresh()
+  }
+
+  async function toggleSubtask(subtask: Subtask) {
+    await api(`/subtasks/${subtask.id}`, { method: 'PATCH', body: JSON.stringify({ completed: !subtask.completed }) })
+    await loadTask()
+    onRefresh()
+  }
+
+  async function deleteSubtask(subtaskId: number) {
+    await api(`/subtasks/${subtaskId}`, { method: 'DELETE' })
     await loadTask()
     onRefresh()
   }
@@ -114,6 +139,10 @@ export default function TaskDrawer({
     onClose()
     onRefresh()
   }
+
+  const subtaskProgress = task && task.subtaskCount && task.subtaskCount > 0
+    ? `${task.completedSubtaskCount}/${task.subtaskCount}`
+    : null
 
   if (!task) return null
 
@@ -149,7 +178,7 @@ export default function TaskDrawer({
         </form>
       ) : (
         <>
-          <p className="eyebrow">{task.status}</p>
+          <p className="eyebrow">{task.status}{subtaskProgress ? ` · 子任务 ${subtaskProgress}` : ''}</p>
           <h2>{task.title}</h2>
           <p className="muted">{task.description || '暂无描述'}</p>
           <div className="detail-grid">
@@ -166,6 +195,38 @@ export default function TaskDrawer({
           {task.canDelete && <button className="danger" onClick={handleDeleteTask}>删除任务</button>}
         </>
       )}
+
+      <section className="subtasks">
+        <h3>子任务 {subtaskProgress ? `(${subtaskProgress})` : ''}</h3>
+        {subtasks.length === 0 && <p className="muted" style={{ fontSize: 14 }}>暂无子任务</p>}
+        {subtasks.map((subtask) => (
+          <div key={subtask.id} className="subtask-row">
+            <input
+              type="checkbox"
+              checked={subtask.completed}
+              onChange={() => toggleSubtask(subtask)}
+            />
+            <span style={{ flex: 1, textDecoration: subtask.completed ? 'line-through' : 'none', color: subtask.completed ? 'var(--text-muted)' : 'var(--text-main)' }}>
+              {subtask.title}
+            </span>
+            <button
+              style={{ fontSize: 12, background: 'transparent', border: 0, color: 'var(--danger)', cursor: 'pointer' }}
+              onClick={() => deleteSubtask(subtask.id)}
+            >
+              删除
+            </button>
+          </div>
+        ))}
+        <form onSubmit={addSubtask} style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <input
+            style={{ flex: 1 }}
+            placeholder="添加子任务..."
+            value={subtaskText}
+            onChange={(e) => setSubtaskText(e.target.value)}
+          />
+          <button type="submit">添加</button>
+        </form>
+      </section>
 
       <section className="activities">
         <h3>任务动态</h3>
@@ -187,7 +248,7 @@ export default function TaskDrawer({
               <strong>{comment.author.name}</strong>
               {comment.canDelete && (
                 <button
-                  style={{ fontSize: 12, background: 'transparent', border: 0, color: '#e03131', cursor: 'pointer' }}
+                  style={{ fontSize: 12, background: 'transparent', border: 0, color: 'var(--danger)', cursor: 'pointer' }}
                   onClick={() => deleteComment(comment.id)}
                 >
                   删除

@@ -2,12 +2,99 @@
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  color: #1d2433;
-  background: #f5f7fb;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  --bg-page: #f5f7fb;
+  --bg-card: #ffffff;
+  --bg-sidebar: #111827;
+  --bg-sidebar-input: #1f2937;
+  --bg-column: #eef2f7;
+  --bg-input: #ffffff;
+  --bg-button-secondary: #f8fafc;
+  --bg-badge-todo: #e0e7ff;
+  --bg-badge-in-progress: #fef3c7;
+  --bg-badge-done: #d1fae5;
+  --bg-drawer: #ffffff;
+  --bg-modal: #ffffff;
+  --bg-table-header: #f8fafc;
+  --bg-hover: #f8fafc;
+  --bg-close: #eef2f7;
+  --bg-archive-btn: #f8f9fa;
+
+  --text-main: #1d2433;
+  --text-muted: #667085;
+  --text-sidebar: #e5e7eb;
+  --text-sidebar-muted: #9ca3af;
+  --text-danger: #e03131;
+  --text-form-message: #d9480f;
+  --text-badge-todo: #3730a3;
+  --text-badge-in-progress: #92400e;
+  --text-badge-done: #065f46;
+  --text-activity: #495057;
+  --text-activity-time: #868e96;
+  --text-comment: #475467;
+
+  --border-main: #d9e1ec;
+  --border-input: #cbd5e1;
+  --border-sidebar: #273244;
+  --border-card: #d9e1ec;
+  --border-column: #d9e1ec;
+  --border-table: #eef2f7;
+  --border-archive: #e9ecef;
+
+  --accent: #4263eb;
+  --accent-light: #eef2f7;
+  --success: #2f9e44;
+  --danger: #e03131;
+  --warning: #f08c00;
+
+  color: var(--text-main);
+  background: var(--bg-page);
+}
+
+[data-theme="dark"] {
+  --bg-page: #0b1120;
+  --bg-card: #151c2c;
+  --bg-sidebar: #080d18;
+  --bg-sidebar-input: #111827;
+  --bg-column: #1a2332;
+  --bg-input: #1a2332;
+  --bg-button-secondary: #1e293b;
+  --bg-badge-todo: #1e1b4b;
+  --bg-badge-in-progress: #451a03;
+  --bg-badge-done: #064e3b;
+  --bg-drawer: #151c2c;
+  --bg-modal: #151c2c;
+  --bg-table-header: #1a2332;
+  --bg-hover: #1a2332;
+  --bg-close: #1a2332;
+  --bg-archive-btn: #1e293b;
+
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-sidebar: #e2e8f0;
+  --text-sidebar-muted: #64748b;
+  --text-danger: #f87171;
+  --text-form-message: #fb923c;
+  --text-badge-todo: #a5b4fc;
+  --text-badge-in-progress: #fde68a;
+  --text-badge-done: #6ee7b7;
+  --text-activity: #cbd5e1;
+  --text-activity-time: #64748b;
+  --text-comment: #cbd5e1;
+
+  --border-main: #334155;
+  --border-input: #475569;
+  --border-sidebar: #1e293b;
+  --border-card: #334155;
+  --border-column: #334155;
+  --border-table: #334155;
+  --border-archive: #334155;
+
+  --accent-light: #1e293b;
 }
 
 * {

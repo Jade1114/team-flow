@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { User, Project, Member, Task, Stats, TaskStatus, Activity } from '../api/client'
 import TaskDrawer from '../components/TaskDrawer'
@@ -45,7 +46,8 @@ const statusColumns: { status: TaskStatus; title: string }[] = [
 ]
 const priorityLabel: Record<string, string> = { LOW: '低', MEDIUM: '中', HIGH: '高', URGENT: '紧急' }
 
-export default function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
+export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { user: User; onLogout: () => void; theme: 'light' | 'dark'; onToggleTheme: () => void }) {
+  const navigate = useNavigate()
   const [projects, setProjects] = useState<Project[]>([])
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null)
   const [project, setProject] = useState<Project | null>(null)
@@ -55,11 +57,15 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null)
   const [projectForm, setProjectForm] = useState({ name: '', description: '' })
   const [inviteEmail, setInviteEmail] = useState('')
-  const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'MEDIUM', assigneeId: '', dueDate: '' })
+  const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'MEDIUM', assigneeId: '', dueDate: '', labels: '' })
+  const [labelFilter, setLabelFilter] = useState('')
   const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null)
   const [message, setMessage] = useState('')
   const [activities, setActivities] = useState<Activity[]>([])
   const [taskKeyword, setTaskKeyword] = useState('')
+  const [showProfile, setShowProfile] = useState(false)
+  const [profileForm, setProfileForm] = useState({ name: user.name, avatarUrl: user.avatarUrl ?? '' })
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set())
 
   const activeProject = useMemo(
     () => projects.find((item) => item.id === activeProjectId) ?? project,
@@ -84,7 +90,7 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
       loadStats(activeProjectId)
       loadActivities(activeProjectId)
     }
-  }, [activeProjectId])
+  }, [activeProjectId, labelFilter])
 
   async function loadProjects() {
     const data = await api<{ items: Project[] }>('/projects')
@@ -104,7 +110,9 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
   }
 
   async function loadBoard(projectId: number) {
-    const data = await api<{ columns: { status: TaskStatus; tasks: Task[] }[] }>(`/projects/${projectId}/board`)
+    const params = new URLSearchParams()
+    if (labelFilter) params.set('label', labelFilter)
+    const data = await api<{ columns: { status: TaskStatus; tasks: Task[] }[] }>(`/projects/${projectId}/board?${params.toString()}`)
     setTasks(data.columns.flatMap((column) => column.tasks))
   }
 
@@ -139,6 +147,15 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
     setTimeout(() => setMessage(''), 2000)
   }
 
+  async function unarchiveProject() {
+    if (!activeProjectId) return
+    if (!confirm('确定恢复该项目？')) return
+    await api(`/projects/${activeProjectId}/unarchive`, { method: 'PATCH' })
+    setMessage('项目已恢复')
+    await refreshProject()
+    setTimeout(() => setMessage(''), 2000)
+  }
+
   async function inviteMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!activeProjectId) return
@@ -167,9 +184,10 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
         priority: taskForm.priority,
         assigneeId: taskForm.assigneeId ? Number(taskForm.assigneeId) : null,
         dueDate: taskForm.dueDate || null,
+        labels: taskForm.labels ? JSON.stringify(parseLabelString(taskForm.labels)) : null,
       }),
     })
-    setTaskForm({ title: '', description: '', priority: 'MEDIUM', assigneeId: '', dueDate: '' })
+    setTaskForm({ title: '', description: '', priority: 'MEDIUM', assigneeId: '', dueDate: '', labels: '' })
     await refreshProject()
   }
 
@@ -230,6 +248,50 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
     await refreshProject()
   }
 
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    await api('/users/me', { method: 'PUT', body: JSON.stringify({ name: profileForm.name, avatarUrl: profileForm.avatarUrl || null }) })
+    setShowProfile(false)
+    window.location.reload()
+  }
+
+  async function handleAvatarChange(file: File) {
+    if (file.size > 2 * 1024 * 1024) {
+      alert('图片不能超过 2MB')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      setProfileForm((prev) => ({ ...prev, avatarUrl: reader.result as string }))
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function toggleSelectTask(taskId: number, e: React.MouseEvent) {
+    e.stopPropagation()
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
+  }
+
+  async function batchMove(status: TaskStatus) {
+    if (selectedTaskIds.size === 0) return
+    await api('/tasks/batch-move', { method: 'POST', body: JSON.stringify({ taskIds: Array.from(selectedTaskIds), status }) })
+    setSelectedTaskIds(new Set())
+    await refreshProject()
+  }
+
+  async function batchDelete() {
+    if (selectedTaskIds.size === 0) return
+    if (!confirm(`确定删除选中的 ${selectedTaskIds.size} 个任务？`)) return
+    await api('/tasks/batch-delete', { method: 'POST', body: JSON.stringify({ taskIds: Array.from(selectedTaskIds) }) })
+    setSelectedTaskIds(new Set())
+    await refreshProject()
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -240,6 +302,10 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
             <small>{user.name}</small>
           </div>
         </div>
+        <nav className="nav-menu">
+          <button className="active">项目看板</button>
+          <button onClick={() => navigate('/my-tasks')}>我的任务</button>
+        </nav>
         <form onSubmit={createProject} className="compact-form">
           <input placeholder="新项目名称" value={projectForm.name} onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })} />
           <textarea placeholder="项目描述" value={projectForm.description} onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })} />
@@ -253,6 +319,8 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
             </button>
           ))}
         </nav>
+        <button className="theme-toggle" onClick={onToggleTheme}>{theme === 'dark' ? '☀️ 浅色模式' : '🌙 深色模式'}</button>
+        <button className="ghost" onClick={() => setShowProfile(true)}>个人资料</button>
         <button className="ghost" onClick={onLogout}>退出登录</button>
       </aside>
 
@@ -263,6 +331,9 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
               <p className="eyebrow">{activeProject?.status ?? 'ACTIVE'}</p>
               {project?.currentUserRole === 'OWNER' && project?.status === 'ACTIVE' && (
                 <button className="archive-btn" onClick={archiveProject}>归档项目</button>
+              )}
+              {project?.currentUserRole === 'OWNER' && project?.status === 'ARCHIVED' && (
+                <button className="archive-btn" onClick={unarchiveProject}>恢复项目</button>
               )}
             </div>
             <h1>{activeProject?.name ?? '选择或创建项目'}</h1>
@@ -299,6 +370,7 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
                   <input type="date" value={taskForm.dueDate} onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })} />
                   <button type="submit">创建任务</button>
                 </div>
+                <input placeholder="标签（用逗号分隔，如：Bug,设计,紧急）" value={taskForm.labels} onChange={(e) => setTaskForm({ ...taskForm, labels: e.target.value })} />
               </form>
 
               <div className="board-toolbar">
@@ -307,6 +379,13 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
                   placeholder="搜索任务标题或描述..."
                   value={taskKeyword}
                   onChange={(e) => setTaskKeyword(e.target.value)}
+                />
+                <input
+                  className="search-input"
+                  placeholder="按标签筛选..."
+                  value={labelFilter}
+                  onChange={(e) => setLabelFilter(e.target.value)}
+                  style={{ maxWidth: 180 }}
                 />
                 {taskKeyword && (
                   <small style={{ color: '#667085' }}>
@@ -333,16 +412,24 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
                       .map((task) => (
                         <article
                           key={task.id}
-                          className={`task-card ${isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue' : ''}`}
+                          className={`task-card ${isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue' : ''} ${selectedTaskIds.has(task.id) ? 'selected' : ''}`}
                           draggable
                           onDragStart={() => setDraggingTaskId(task.id)}
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={(e) => dropOnTask(task, e)}
                           onClick={() => setSelectedTaskId(task.id)}
                         >
-                          <div className="task-title">
-                            <strong>{task.title}</strong>
-                            <span className={`priority ${task.priority.toLowerCase()}`}>{priorityLabel[task.priority] ?? task.priority}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={selectedTaskIds.has(task.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => toggleSelectTask(task.id, e as unknown as React.MouseEvent)}
+                            />
+                            <div className="task-title" style={{ flex: 1, marginBottom: 0 }}>
+                              <strong>{task.title}</strong>
+                              <span className={`priority ${task.priority.toLowerCase()}`}>{priorityLabel[task.priority] ?? task.priority}</span>
+                            </div>
                           </div>
                           <p>{task.description || '暂无描述'}</p>
                           <div className="task-meta">
@@ -365,6 +452,19 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
                   </section>
                 ))}
               </div>
+
+              {selectedTaskIds.size > 0 && (
+                <div className="batch-bar">
+                  <span>已选择 {selectedTaskIds.size} 个任务</span>
+                  <div className="batch-actions">
+                    {statusColumns.map((col) => (
+                      <button key={col.status} onClick={() => batchMove(col.status)}>移到{col.title}</button>
+                    ))}
+                    <button className="danger" onClick={batchDelete}>批量删除</button>
+                    <button onClick={() => setSelectedTaskIds(new Set())}>取消</button>
+                  </div>
+                </div>
+              )}
             </section>
 
             <aside className="side-panel">
@@ -433,6 +533,35 @@ export default function Dashboard({ user, onLogout }: { user: User; onLogout: ()
           onClose={() => setSelectedTaskId(null)}
           onRefresh={() => refreshProject()}
         />
+      )}
+
+      {showProfile && (
+        <div className="modal-overlay" onClick={() => setShowProfile(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>个人资料</h3>
+            <form onSubmit={saveProfile} className="compact-form">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {profileForm.avatarUrl ? (
+                  <img src={profileForm.avatarUrl} alt="avatar" style={{ width: 48, height: 48, borderRadius: 999, objectFit: 'cover', border: '1px solid var(--border-main)' }} />
+                ) : (
+                  <div style={{ width: 48, height: 48, borderRadius: 999, background: 'var(--bg-column)', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{profileForm.name.charAt(0)}</div>
+                )}
+                <label style={{ flex: 1, cursor: 'pointer' }}>
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAvatarChange(f) }} />
+                  <span className="archive-btn" style={{ display: 'inline-block' }}>更换头像</span>
+                </label>
+              </div>
+              <label>
+                姓名
+                <input value={profileForm.name} onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })} />
+              </label>
+              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                <button type="submit" className="primary">保存</button>
+                <button type="button" onClick={() => setShowProfile(false)}>取消</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </main>
   )

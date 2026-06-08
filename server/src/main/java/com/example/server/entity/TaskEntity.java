@@ -14,11 +14,12 @@ public class TaskEntity {
     public long creatorId;
     public LocalDate dueDate;
     public int sortOrder;
+    public String labels;
     public LocalDateTime deletedAt;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
 
-    public TaskEntity(long id, long projectId, String title, String description, String status, String priority, Long assigneeId, long creatorId, LocalDate dueDate, int sortOrder, LocalDateTime deletedAt, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public TaskEntity(long id, long projectId, String title, String description, String status, String priority, Long assigneeId, long creatorId, LocalDate dueDate, int sortOrder, String labels, LocalDateTime deletedAt, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.projectId = projectId;
         this.title = title;
@@ -29,6 +30,7 @@ public class TaskEntity {
         this.creatorId = creatorId;
         this.dueDate = dueDate;
         this.sortOrder = sortOrder;
+        this.labels = labels;
         this.deletedAt = deletedAt;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;

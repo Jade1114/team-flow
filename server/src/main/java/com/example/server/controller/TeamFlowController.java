@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -32,6 +33,13 @@ public class TeamFlowController {
     @GetMapping("/api/auth/me")
     ApiResponse<Map<String, Object>> me(@RequestHeader(name = "Authorization", required = false) String authorization) {
         return ApiResponse.ok(service.userDto(service.currentUser(authorization), true));
+    }
+
+    @PutMapping("/api/users/me")
+    ApiResponse<Map<String, Object>> updateMe(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @RequestBody Map<String, Object> body) {
+        return ApiResponse.ok(service.userDto(service.updateUser(service.currentUser(authorization), text(body, "name"), optionalText(body, "avatarUrl")), true));
     }
 
     @GetMapping("/api/projects")
@@ -75,12 +83,31 @@ public class TeamFlowController {
         return ApiResponse.ok(Map.of("id", project.id, "status", project.status, "updatedAt", project.updatedAt));
     }
 
+    @PatchMapping("/api/projects/{projectId}/unarchive")
+    ApiResponse<Map<String, Object>> unarchiveProject(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable long projectId) {
+        var project = service.unarchiveProject(service.currentUser(authorization), projectId);
+        return ApiResponse.ok(Map.of("id", project.id, "status", project.status, "updatedAt", project.updatedAt));
+    }
+
     @GetMapping("/api/projects/{projectId}/members")
     ApiResponse<Map<String, Object>> members(
             @RequestHeader(name = "Authorization", required = false) String authorization,
             @PathVariable long projectId,
             @RequestParam(required = false) String keyword) {
         return ApiResponse.ok(Map.of("items", service.members(service.currentUser(authorization), projectId, keyword)));
+    }
+
+    @GetMapping("/api/my/tasks")
+    ApiResponse<Map<String, Object>> myTasks(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) Long projectId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return ApiResponse.ok(service.myTasks(service.currentUser(authorization), projectId, status, keyword, page, pageSize));
     }
 
     @PostMapping("/api/projects/{projectId}/invites")
@@ -128,8 +155,9 @@ public class TeamFlowController {
             @RequestHeader(name = "Authorization", required = false) String authorization,
             @PathVariable long projectId,
             @RequestParam(required = false) Long assigneeId,
-            @RequestParam(required = false) String keyword) {
-        return ApiResponse.ok(service.board(service.currentUser(authorization), projectId, assigneeId, keyword));
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String label) {
+        return ApiResponse.ok(service.board(service.currentUser(authorization), projectId, assigneeId, keyword, label));
     }
 
     @PostMapping("/api/projects/{projectId}/tasks")
@@ -178,6 +206,58 @@ public class TeamFlowController {
             @RequestHeader(name = "Authorization", required = false) String authorization,
             @PathVariable long taskId) {
         service.deleteTask(service.currentUser(authorization), taskId);
+        return ApiResponse.ok(null);
+    }
+
+    @PostMapping("/api/tasks/batch-move")
+    ApiResponse<Object> batchMoveTasks(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @RequestBody Map<String, Object> body) {
+        var rawList = body.get("taskIds");
+        var taskIds = rawList == null ? List.<Long>of() : ((List<?>) rawList).stream().map(v -> ((Number) v).longValue()).toList();
+        service.batchMoveTasks(service.currentUser(authorization), taskIds, text(body, "status"));
+        return ApiResponse.ok(null);
+    }
+
+    @PostMapping("/api/tasks/batch-delete")
+    ApiResponse<Object> batchDeleteTasks(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @RequestBody Map<String, Object> body) {
+        var rawList = body.get("taskIds");
+        var taskIds = rawList == null ? List.<Long>of() : ((List<?>) rawList).stream().map(v -> ((Number) v).longValue()).toList();
+        service.batchDeleteTasks(service.currentUser(authorization), taskIds);
+        return ApiResponse.ok(null);
+    }
+
+    @GetMapping("/api/tasks/{taskId}/subtasks")
+    ApiResponse<Map<String, Object>> subtasks(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable long taskId) {
+        return ApiResponse.ok(Map.of("items", service.subtasks(service.currentUser(authorization), taskId)));
+    }
+
+    @PostMapping("/api/tasks/{taskId}/subtasks")
+    ResponseEntity<ApiResponse<Map<String, Object>>> createSubtask(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable long taskId,
+            @RequestBody Map<String, Object> body) {
+        return created(service.subtaskDto(service.createSubtask(service.currentUser(authorization), taskId, text(body, "title"))));
+    }
+
+    @PatchMapping("/api/subtasks/{subtaskId}")
+    ApiResponse<Map<String, Object>> updateSubtask(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable long subtaskId,
+            @RequestBody Map<String, Object> body) {
+        var completed = body.get("completed");
+        return ApiResponse.ok(service.subtaskDto(service.updateSubtask(service.currentUser(authorization), subtaskId, optionalText(body, "title"), completed == null ? null : Boolean.parseBoolean(completed.toString()))));
+    }
+
+    @DeleteMapping("/api/subtasks/{subtaskId}")
+    ApiResponse<Object> deleteSubtask(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable long subtaskId) {
+        service.deleteSubtask(service.currentUser(authorization), subtaskId);
         return ApiResponse.ok(null);
     }
 
