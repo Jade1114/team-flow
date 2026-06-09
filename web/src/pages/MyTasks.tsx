@@ -142,62 +142,64 @@ export default function MyTasks({ user, onLogout, theme, onToggleTheme }: { user
           )}
         </div>
 
-        {error && (
-          <div className="task-table-wrapper" style={{ padding: 24, color: 'var(--danger)' }}>
-            <strong>加载失败：</strong>{error}
-          </div>
-        )}
-        {loading && (
-          <div className="task-table-wrapper" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-            <div style={{ animation: 'pulse 1.5s ease infinite' }}>加载中...</div>
-          </div>
-        )}
-        {!loading && !error && (
-          <div className="task-table-wrapper" style={{ overflowX: 'auto' }}>
-            <table className="task-table">
-              <thead>
-                <tr>
-                  <th>任务</th>
-                  <th>项目</th>
-                  <th>状态</th>
-                  <th>优先级</th>
-                  <th>截止日</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTasks.length === 0 && (
+        <div className="tasks-scroll">
+          {error && (
+            <div className="task-table-wrapper" style={{ padding: 24, color: 'var(--danger)' }}>
+              <strong>加载失败：</strong>{error}
+            </div>
+          )}
+          {loading && (
+            <div className="task-table-wrapper" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+              <div style={{ animation: 'pulse 1.5s ease infinite' }}>加载中...</div>
+            </div>
+          )}
+          {!loading && !error && (
+            <div className="task-table-wrapper" style={{ overflowX: 'auto' }}>
+              <table className="task-table">
+                <thead>
                   <tr>
-                    <td colSpan={5} className="empty-cell">
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 32 }}>📭</span>
-                        <span>暂无任务</span>
-                      </div>
-                    </td>
+                    <th>任务</th>
+                    <th>项目</th>
+                    <th>状态</th>
+                    <th>优先级</th>
+                    <th>截止日</th>
                   </tr>
-                )}
-                {filteredTasks.map((task) => (
-                  <tr key={task.id} onClick={() => setSelectedTaskId(task.id)} className="clickable-row">
-                    <td>
-                      <strong style={{ fontSize: 14 }}>{task.title}</strong>
-                      <p className="muted" style={{ margin: '4px 0 0', fontSize: 13, lineHeight: 1.5 }}>{task.description || '暂无描述'}</p>
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{task.projectName ?? '-'}</td>
-                    <td>
-                      <span className={`badge ${task.status.toLowerCase()}`}>{statusMap[task.status] ?? task.status}</span>
-                    </td>
-                    <td>
-                      <span className={`priority ${task.priority.toLowerCase()}`}>{priorityLabel[task.priority] ?? task.priority}</span>
-                    </td>
-                    <td className={isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue-text' : ''} style={{ whiteSpace: 'nowrap' }}>
-                      {task.dueDate ?? '-'}
-                      {isOverdue(task.dueDate) && task.status !== 'DONE' ? ' (逾期)' : ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {filteredTasks.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="empty-cell">
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 32 }}>📭</span>
+                          <span>暂无任务</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {filteredTasks.map((task) => (
+                    <tr key={task.id} onClick={() => setSelectedTaskId(task.id)} className="clickable-row">
+                      <td>
+                        <strong style={{ fontSize: 14 }}>{task.title}</strong>
+                        <p className="muted" style={{ margin: '4px 0 0', fontSize: 13, lineHeight: 1.5 }}>{task.description || '暂无描述'}</p>
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{task.projectName ?? '-'}</td>
+                      <td>
+                        <span className={`badge ${task.status.toLowerCase()}`}>{statusMap[task.status] ?? task.status}</span>
+                      </td>
+                      <td>
+                        <span className={`priority ${task.priority.toLowerCase()}`}>{priorityLabel[task.priority] ?? task.priority}</span>
+                      </td>
+                      <td className={isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue-text' : ''} style={{ whiteSpace: 'nowrap' }}>
+                        {task.dueDate ?? '-'}
+                        {isOverdue(task.dueDate) && task.status !== 'DONE' ? ' (逾期)' : ''}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
         {selectedTaskId && (
           <TaskDrawer

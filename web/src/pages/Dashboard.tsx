@@ -413,68 +413,70 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
                 )}
               </div>
 
-              <div className="board">
-                {statusColumns.map((column) => (
-                  <section
-                    key={column.status}
-                    className="column"
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => dropOnColumn(column.status)}
-                  >
-                    <div className="column-head">
-                      <h2>{column.title}</h2>
-                      <span>{filteredTasks.filter((task) => task.status === column.status).length}</span>
-                    </div>
-                    {filteredTasks
-                      .filter((task) => task.status === column.status)
-                      .sort((a, b) => a.sortOrder - b.sortOrder)
-                      .map((task) => (
-                        <article
-                          key={task.id}
-                          className={`task-card ${isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue' : ''} ${selectedTaskIds.has(task.id) ? 'selected' : ''}`}
-                          draggable
-                          onDragStart={() => setDraggingTaskId(task.id)}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={(e) => dropOnTask(task, e)}
-                          onClick={() => setSelectedTaskId(task.id)}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                            <input
-                              type="checkbox"
-                              checked={selectedTaskIds.has(task.id)}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => toggleSelectTask(task.id, e)}
-                            />
-                            <div className="task-title" style={{ flex: 1, marginBottom: 0 }}>
-                              <strong>{task.title}</strong>
-                              <span className={`priority ${task.priority.toLowerCase()}`}>{priorityLabel[task.priority] ?? task.priority}</span>
-                            </div>
-                          </div>
-                          <p>{task.description || '暂无描述'}</p>
-                          <div className="task-meta">
-                            <span>{task.assignee?.name ?? '未分配'}</span>
-                            <span className={isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue-text' : ''}>
-                              {task.dueDate ?? '无截止日'}
-                              {isOverdue(task.dueDate) && task.status !== 'DONE' ? ' (逾期)' : ''}
-                            </span>
-                            <span>{task.commentCount} 评论</span>
-                          </div>
-                          <div className="task-actions" onClick={(e) => e.stopPropagation()}>
-                            {statusColumns.map((target) => (
-                              <button key={target.status} disabled={target.status === task.status} onClick={() => moveTask(task, target.status)}>
-                                {target.title}
-                              </button>
-                            ))}
-                          </div>
-                        </article>
-                      ))}
-                    {filteredTasks.filter((t) => t.status === column.status).length === 0 && (
-                      <div style={{ textAlign: 'center', padding: '32px 12px', color: 'var(--text-muted)', fontSize: 13 }}>
-                        暂无任务
+              <div className="board-scroll">
+                <div className="board">
+                  {statusColumns.map((column) => (
+                    <section
+                      key={column.status}
+                      className="column"
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => dropOnColumn(column.status)}
+                    >
+                      <div className="column-head">
+                        <h2>{column.title}</h2>
+                        <span>{filteredTasks.filter((task) => task.status === column.status).length}</span>
                       </div>
-                    )}
-                  </section>
-                ))}
+                      {filteredTasks
+                        .filter((task) => task.status === column.status)
+                        .sort((a, b) => a.sortOrder - b.sortOrder)
+                        .map((task) => (
+                          <article
+                            key={task.id}
+                            className={`task-card ${isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue' : ''} ${selectedTaskIds.has(task.id) ? 'selected' : ''}`}
+                            draggable
+                            onDragStart={() => setDraggingTaskId(task.id)}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => dropOnTask(task, e)}
+                            onClick={() => setSelectedTaskId(task.id)}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={selectedTaskIds.has(task.id)}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => toggleSelectTask(task.id, e)}
+                              />
+                              <div className="task-title" style={{ flex: 1, marginBottom: 0 }}>
+                                <strong>{task.title}</strong>
+                                <span className={`priority ${task.priority.toLowerCase()}`}>{priorityLabel[task.priority] ?? task.priority}</span>
+                              </div>
+                            </div>
+                            <p>{task.description || '暂无描述'}</p>
+                            <div className="task-meta">
+                              <span>{task.assignee?.name ?? '未分配'}</span>
+                              <span className={isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue-text' : ''}>
+                                {task.dueDate ?? '无截止日'}
+                                {isOverdue(task.dueDate) && task.status !== 'DONE' ? ' (逾期)' : ''}
+                              </span>
+                              <span>{task.commentCount} 评论</span>
+                            </div>
+                            <div className="task-actions" onClick={(e) => e.stopPropagation()}>
+                              {statusColumns.map((target) => (
+                                <button key={target.status} disabled={target.status === task.status} onClick={() => moveTask(task, target.status)}>
+                                  {target.title}
+                                </button>
+                              ))}
+                            </div>
+                          </article>
+                        ))}
+                      {filteredTasks.filter((t) => t.status === column.status).length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--text-muted)', fontSize: 12 }}>
+                          暂无任务
+                        </div>
+                      )}
+                    </section>
+                  ))}
+                </div>
               </div>
 
               {selectedTaskIds.size > 0 && (
