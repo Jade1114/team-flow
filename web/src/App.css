@@ -407,13 +407,20 @@ button:disabled {
   padding: 7px 10px;
   border-radius: var(--radius-md);
   transition: all 0.15s ease;
-  margin-top: auto;
   flex-shrink: 0;
 }
 
 .ghost:hover {
   background: var(--bg-sidebar-hover);
   color: var(--text-sidebar);
+}
+
+/* Sidebar footer: pin actions to bottom */
+.sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* ================================================================

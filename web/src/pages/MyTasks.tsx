@@ -96,8 +96,11 @@ export default function MyTasks({ user, onLogout, theme, onToggleTheme }: { user
           <button className="active">我的任务</button>
         </nav>
         <NotificationBell onOpenTask={(taskId) => { setSelectedTaskId(taskId) }} />
-        <button className="theme-toggle" onClick={onToggleTheme}>{theme === 'dark' ? '☀️ 浅色模式' : '🌙 深色模式'}</button>
-        <button className="ghost" onClick={onLogout}>退出登录</button>
+
+        <div className="sidebar-footer">
+          <button className="theme-toggle" onClick={onToggleTheme}>{theme === 'dark' ? '☀️ 浅色模式' : '🌙 深色模式'}</button>
+          <button className="ghost" onClick={onLogout}>退出登录</button>
+        </div>
       </aside>
 
       <section className="workspace">

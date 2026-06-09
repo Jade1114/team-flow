@@ -336,9 +336,12 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
           ))}
         </nav>
         <NotificationBell onOpenTask={(taskId, projectId) => { setActiveProjectId(projectId); setSelectedTaskId(taskId) }} />
-        <button className="theme-toggle" onClick={onToggleTheme}>{theme === 'dark' ? '☀️ 浅色模式' : '🌙 深色模式'}</button>
-        <button className="ghost" onClick={() => setShowProfile(true)}>个人资料</button>
-        <button className="ghost" onClick={onLogout}>退出登录</button>
+
+        <div className="sidebar-footer">
+          <button className="theme-toggle" onClick={onToggleTheme}>{theme === 'dark' ? '☀️ 浅色模式' : '🌙 深色模式'}</button>
+          <button className="ghost" onClick={() => setShowProfile(true)}>个人资料</button>
+          <button className="ghost" onClick={onLogout}>退出登录</button>
+        </div>
       </aside>
 
       <section className="workspace">
