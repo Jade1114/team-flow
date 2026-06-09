@@ -349,18 +349,26 @@ export default function TaskDrawer({
         <h3>评论</h3>
         {comments.map((comment) => (
           <article key={comment.id}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong>{comment.author.name}</strong>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 999, background: 'var(--accent)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                  {comment.author.name.charAt(0)}
+                </div>
+                <div>
+                  <strong style={{ fontSize: 13 }}>{comment.author.name}</strong>
+                  <div style={{ fontSize: 11, color: 'var(--text-activity-time)', marginTop: 1 }}>{formatTime(comment.createdAt)}</div>
+                </div>
+              </div>
               {comment.canDelete && (
                 <button
-                  style={{ fontSize: 12, background: 'transparent', border: 0, color: 'var(--danger)', cursor: 'pointer' }}
+                  style={{ fontSize: 12, background: 'transparent', border: 0, color: 'var(--danger)', cursor: 'pointer', fontWeight: 500 }}
                   onClick={() => deleteComment(comment.id)}
                 >
                   删除
                 </button>
               )}
             </div>
-            <p>{renderCommentContent(comment.content)}</p>
+            <p style={{ marginLeft: 38 }}>{renderCommentContent(comment.content)}</p>
           </article>
         ))}
         <form onSubmit={addComment} style={{ position: 'relative' }}>

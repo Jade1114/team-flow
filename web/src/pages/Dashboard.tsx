@@ -54,6 +54,7 @@ const statusColumns: { status: TaskStatus; title: string }[] = [
   { status: 'DONE', title: '已完成' },
 ]
 const priorityLabel: Record<string, string> = { LOW: '低', MEDIUM: '中', HIGH: '高', URGENT: '紧急' }
+const metricIcons = ['📊', '📋', '⚠️', '👥']
 
 export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { user: User; onLogout: () => void; theme: 'light' | 'dark'; onToggleTheme: () => void }) {
   const navigate = useNavigate()
@@ -212,11 +213,8 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
 
     const draggedTask = tasks.find((t) => t.id === draggedId)
     if (!draggedTask) return
-
-    // 同列拖拽到空白处，不处理（没有指定插入位置）
     if (draggedTask.status === status) return
 
-    // 跨列，放到列末尾
     const columnTasks = tasks
       .filter((t) => t.status === status)
       .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -276,7 +274,7 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
     reader.readAsDataURL(file)
   }
 
-  function toggleSelectTask(taskId: number, e: React.MouseEvent) {
+  function toggleSelectTask(taskId: number, e: React.SyntheticEvent) {
     e.stopPropagation()
     setSelectedTaskIds((prev) => {
       const next = new Set(prev)
@@ -300,6 +298,15 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
     setSelectedTaskIds(new Set())
     await refreshProject()
   }
+
+  const metricData = stats
+    ? [
+        { label: '完成率', value: `${stats.completionRate}%`, icon: metricIcons[0] },
+        { label: '任务', value: stats.totalTasks, icon: metricIcons[1] },
+        { label: '逾期', value: stats.overdueTasks, icon: metricIcons[2] },
+        { label: '成员', value: project?.memberCount ?? members.length, icon: metricIcons[3] },
+      ]
+    : []
 
   return (
     <main className="app-shell">
@@ -337,7 +344,7 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
       <section className="workspace">
         <header className="topbar">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
               <p className="eyebrow">{activeProject?.status ?? 'ACTIVE'}</p>
               {project?.currentUserRole === 'OWNER' && project?.status === 'ACTIVE' && (
                 <button className="archive-btn" onClick={archiveProject}>归档项目</button>
@@ -351,10 +358,12 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
           </div>
           {stats && (
             <div className="metrics">
-              <Metric label="完成率" value={`${stats.completionRate}%`} />
-              <Metric label="任务" value={stats.totalTasks} />
-              <Metric label="逾期" value={stats.overdueTasks} />
-              <Metric label="成员" value={project?.memberCount ?? members.length} />
+              {metricData.map((m) => (
+                <div key={m.label}>
+                  <strong>{m.value}</strong>
+                  <span>{m.label}</span>
+                </div>
+              ))}
             </div>
           )}
         </header>
@@ -398,7 +407,7 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
                   style={{ maxWidth: 180 }}
                 />
                 {taskKeyword && (
-                  <small style={{ color: '#667085' }}>
+                  <small style={{ color: 'var(--text-muted)' }}>
                     找到 {filteredTasks.length} 个任务
                   </small>
                 )}
@@ -434,7 +443,7 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
                               type="checkbox"
                               checked={selectedTaskIds.has(task.id)}
                               onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => toggleSelectTask(task.id, e as unknown as React.MouseEvent)}
+                              onChange={(e) => toggleSelectTask(task.id, e)}
                             />
                             <div className="task-title" style={{ flex: 1, marginBottom: 0 }}>
                               <strong>{task.title}</strong>
@@ -459,6 +468,11 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
                           </div>
                         </article>
                       ))}
+                    {filteredTasks.filter((t) => t.status === column.status).length === 0 && (
+                      <div style={{ textAlign: 'center', padding: '32px 12px', color: 'var(--text-muted)', fontSize: 13 }}>
+                        暂无任务
+                      </div>
+                    )}
                   </section>
                 ))}
               </div>
@@ -484,15 +498,15 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
                   <input placeholder="成员邮箱" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
                   <button type="submit" disabled={project?.currentUserRole !== 'OWNER'}>添加</button>
                 </form>
-                {message && <p style={{ color: '#2f9e44', fontSize: 14, margin: '0 0 8px' }}>{message}</p>}
+                {message && <p style={{ color: 'var(--success)', fontSize: 14, margin: '0 0 10px' }}>{message}</p>}
                 <div className="member-list">
                   {members.map((member) => (
                     <div key={member.id}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>{member.user.name}</span>
+                        <span style={{ fontWeight: 600, fontSize: 14 }}>{member.user.name}</span>
                         {project?.currentUserRole === 'OWNER' && member.role !== 'OWNER' && (
                           <button
-                            style={{ fontSize: 12, background: 'transparent', border: 0, color: '#e03131', cursor: 'pointer' }}
+                            style={{ fontSize: 12, background: 'transparent', border: 0, color: 'var(--danger)', cursor: 'pointer', fontWeight: 500 }}
                             onClick={() => removeMember(member.id)}
                           >
                             移除
@@ -510,7 +524,7 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
                   <div className="assignee-list">
                     {stats.byAssignee.map((item) => (
                       <div key={`${item.userId}-${item.userName}`}>
-                        <span>{item.userName}</span>
+                        <span style={{ fontWeight: 500, fontSize: 14 }}>{item.userName}</span>
                         <progress max={item.total || 1} value={item.done}></progress>
                         <small>{item.done}/{item.total}</small>
                       </div>
@@ -525,8 +539,8 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
                   {activities.map((a) => (
                     <div key={a.id} className="activity-item">
                       <strong>{a.user.name}</strong>
-                      <span style={{ fontSize: 13, color: '#495057' }}>{activityText(a)}</span>
-                      <small style={{ color: '#868e96' }}>{formatTime(a.createdAt)}</small>
+                      <span style={{ fontSize: 13, color: 'var(--text-activity)' }}>{activityText(a)}</span>
+                      <small style={{ color: 'var(--text-activity-time)' }}>{formatTime(a.createdAt)}</small>
                     </div>
                   ))}
                 </div>
@@ -549,12 +563,12 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
         <div className="modal-overlay" onClick={() => setShowProfile(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>个人资料</h3>
-            <form onSubmit={saveProfile} className="compact-form">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <form onSubmit={saveProfile} className="compact-form" style={{ background: 'transparent', border: 'none', padding: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 4 }}>
                 {profileForm.avatarUrl ? (
-                  <img src={profileForm.avatarUrl} alt="avatar" style={{ width: 48, height: 48, borderRadius: 999, objectFit: 'cover', border: '1px solid var(--border-main)' }} />
+                  <img src={profileForm.avatarUrl} alt="avatar" style={{ width: 52, height: 52, borderRadius: 999, objectFit: 'cover', border: '2px solid var(--border-main)' }} />
                 ) : (
-                  <div style={{ width: 48, height: 48, borderRadius: 999, background: 'var(--bg-column)', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{profileForm.name.charAt(0)}</div>
+                  <div style={{ width: 52, height: 52, borderRadius: 999, background: 'var(--bg-column)', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>{profileForm.name.charAt(0)}</div>
                 )}
                 <label style={{ flex: 1, cursor: 'pointer' }}>
                   <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAvatarChange(f) }} />
@@ -574,14 +588,5 @@ export default function Dashboard({ user, onLogout, theme, onToggleTheme }: { us
         </div>
       )}
     </main>
-  )
-}
-
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div>
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
   )
 }

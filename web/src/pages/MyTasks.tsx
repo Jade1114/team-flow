@@ -7,6 +7,7 @@ import NotificationBell from '../components/NotificationBell'
 
 const statusMap: Record<string, string> = { TODO: '待处理', IN_PROGRESS: '进行中', DONE: '已完成' }
 const priorityLabel: Record<string, string> = { LOW: '低', MEDIUM: '中', HIGH: '高', URGENT: '紧急' }
+const metricIcons = ['📋', '📌', '🔄', '✅', '⚠️']
 
 function isOverdue(dueDate?: string | null): boolean {
   if (!dueDate) return false
@@ -72,6 +73,14 @@ export default function MyTasks({ user, onLogout, theme, onToggleTheme }: { user
     return { total, todo, inProgress, done, overdue }
   }, [filteredTasks])
 
+  const metricData = [
+    { label: '全部', value: stats.total, icon: metricIcons[0] },
+    { label: '待处理', value: stats.todo, icon: metricIcons[1] },
+    { label: '进行中', value: stats.inProgress, icon: metricIcons[2] },
+    { label: '已完成', value: stats.done, icon: metricIcons[3] },
+    { label: '逾期', value: stats.overdue, icon: metricIcons[4] },
+  ]
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -99,11 +108,12 @@ export default function MyTasks({ user, onLogout, theme, onToggleTheme }: { user
             <p className="muted">查看所有项目中分配给你的任务。</p>
           </div>
           <div className="metrics">
-            <Metric label="全部" value={stats.total} />
-            <Metric label="待处理" value={stats.todo} />
-            <Metric label="进行中" value={stats.inProgress} />
-            <Metric label="已完成" value={stats.done} />
-            <Metric label="逾期" value={stats.overdue} />
+            {metricData.map((m) => (
+              <div key={m.label}>
+                <strong>{m.value}</strong>
+                <span>{m.label}</span>
+              </div>
+            ))}
           </div>
         </header>
 
@@ -128,7 +138,7 @@ export default function MyTasks({ user, onLogout, theme, onToggleTheme }: { user
             style={{ maxWidth: 280 }}
           />
           {keyword && (
-            <small style={{ color: '#667085' }}>找到 {filteredTasks.length} 个任务</small>
+            <small style={{ color: 'var(--text-muted)' }}>找到 {filteredTasks.length} 个任务</small>
           )}
         </div>
 
@@ -138,12 +148,12 @@ export default function MyTasks({ user, onLogout, theme, onToggleTheme }: { user
           </div>
         )}
         {loading && (
-          <div className="task-table-wrapper" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
-            加载中...
+          <div className="task-table-wrapper" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+            <div style={{ animation: 'pulse 1.5s ease infinite' }}>加载中...</div>
           </div>
         )}
         {!loading && !error && (
-          <div className="task-table-wrapper">
+          <div className="task-table-wrapper" style={{ overflowX: 'auto' }}>
             <table className="task-table">
               <thead>
                 <tr>
@@ -157,23 +167,28 @@ export default function MyTasks({ user, onLogout, theme, onToggleTheme }: { user
               <tbody>
                 {filteredTasks.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="empty-cell">暂无任务</td>
+                    <td colSpan={5} className="empty-cell">
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 32 }}>📭</span>
+                        <span>暂无任务</span>
+                      </div>
+                    </td>
                   </tr>
                 )}
                 {filteredTasks.map((task) => (
                   <tr key={task.id} onClick={() => setSelectedTaskId(task.id)} className="clickable-row">
                     <td>
-                      <strong>{task.title}</strong>
-                      <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>{task.description || '暂无描述'}</p>
+                      <strong style={{ fontSize: 14 }}>{task.title}</strong>
+                      <p className="muted" style={{ margin: '4px 0 0', fontSize: 13, lineHeight: 1.5 }}>{task.description || '暂无描述'}</p>
                     </td>
-                    <td>{task.projectName ?? '-'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{task.projectName ?? '-'}</td>
                     <td>
                       <span className={`badge ${task.status.toLowerCase()}`}>{statusMap[task.status] ?? task.status}</span>
                     </td>
                     <td>
                       <span className={`priority ${task.priority.toLowerCase()}`}>{priorityLabel[task.priority] ?? task.priority}</span>
                     </td>
-                    <td className={isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue-text' : ''}>
+                    <td className={isOverdue(task.dueDate) && task.status !== 'DONE' ? 'overdue-text' : ''} style={{ whiteSpace: 'nowrap' }}>
                       {task.dueDate ?? '-'}
                       {isOverdue(task.dueDate) && task.status !== 'DONE' ? ' (逾期)' : ''}
                     </td>
@@ -194,14 +209,5 @@ export default function MyTasks({ user, onLogout, theme, onToggleTheme }: { user
         )}
       </section>
     </main>
-  )
-}
-
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div>
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
   )
 }
